@@ -1,9 +1,11 @@
 "use client";
 
+import { ListItemNode, ListNode } from "@lexical/list";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
+import { ListPlugin } from "@lexical/react/LexicalListPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HeadingNode } from "@lexical/rich-text";
@@ -15,15 +17,26 @@ import SlashMenuPlugin from "./plugins/SlashMenuPlugin";
 const theme = {
   paragraph: "mb-2 text-gray-800",
   heading: {
-    h1: "text-3xl font-bold mb-4", // Style your H1
+    h1: "text-3xl font-bold mb-4 text-gray-900",
+    h2: "text-2xl font-bold mb-3 text-gray-900",
+    h3: "text-xl font-semibold mb-3 text-gray-900",
+    h4: "text-lg font-semibold mb-2 text-gray-800",
+    h5: "text-base font-semibold mb-2 text-gray-800",
+    h6: "text-sm font-semibold mb-2 text-gray-700",
+  },
+  list: {
+    ul: "list-disc list-outside ml-6 mb-2",
+    ol: "list-decimal list-outside ml-6 mb-2",
+    listitem: "mb-1",
   },
 };
+
 export default function Editor() {
   const [jsonState, setJsonState] = useState<string>("");
 
   const initialConfig = {
     namespace: "MyEditor",
-    nodes: [HeadingNode],
+    nodes: [HeadingNode, ListNode, ListItemNode],
     theme,
     onError: (error: Error) => console.error(error),
   };
@@ -53,6 +66,7 @@ export default function Editor() {
             ErrorBoundary={LexicalErrorBoundary}
           />
           <SlashMenuPlugin />
+          <ListPlugin />
           <HistoryPlugin />
           <OnChangePlugin onChange={handleChange} />
         </LexicalComposer>
