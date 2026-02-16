@@ -11,17 +11,21 @@ import { ListPlugin } from "@lexical/react/LexicalListPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HeadingNode } from "@lexical/rich-text";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Awareness } from "y-protocols/awareness";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
 
 import { getWebSocketUrl } from "@/lib/collaboration";
+import { VersionedEdit } from "@/lib/version-history";
 
 import { AwarenessProvider } from "./AwarenessContext";
+import { PlaybackViewer } from "./PlaybackViewer";
 import MultiCursorPlugin from "./plugins/MultiCursorPlugin";
 import SlashMenuPlugin from "./plugins/SlashMenuPlugin";
 import UserPresence from "./UserPresence";
+import { VersionPlayback } from "./VersionPlayback";
+import { VersionTimeline } from "./VersionTimeline";
 
 const theme = {
   paragraph: "mb-2 text-gray-800",
@@ -44,6 +48,10 @@ export default function Editor() {
   const [currentAwareness, setCurrentAwareness] = useState<Awareness | null>(
     null,
   );
+  const [currentDoc, setCurrentDoc] = useState<Y.Doc | null>(null);
+  const [allEdits, setAllEdits] = useState<VersionedEdit[]>([]);
+  const [currentEditIndex, setCurrentEditIndex] = useState(0);
+  const docRef = useRef<Y.Doc | null>(null);
 
   const initialConfig = {
     // NOTE: Critical for collaboration - set editorState to null so CollaborationPlugin
@@ -77,6 +85,10 @@ export default function Editor() {
     (id: string, yjsDocMap: Map<string, Y.Doc>) => {
       const doc = getDocFromMap(id, yjsDocMap);
 
+      // Store reference to doc for versioning
+      docRef.current = doc;
+      setCurrentDoc(doc);
+
       const provider = new WebsocketProvider(getWebSocketUrl(), id, doc, {
         connect: true,
       });
@@ -102,6 +114,7 @@ export default function Editor() {
         <LexicalComposer initialConfig={initialConfig}>
           <div className="flex flex-col gap-4 w-full">
             <UserPresence />
+
             <div className="max-w-2xl mx-auto w-full p-4 border rounded-lg shadow-sm bg-background min-h-50 relative">
               <RichTextPlugin
                 contentEditable={
@@ -126,6 +139,42 @@ export default function Editor() {
               />
               <MultiCursorPlugin />
             </div>
+
+            {/* Version History Controls - Always Visible */}
+            {currentDoc && currentAwareness && (
+              <div className="flex flex-col gap-3 max-w-2xl mx-auto w-full">
+                <VersionPlayback
+                  doc={currentDoc}
+                  awareness={currentAwareness}
+                  onPlaybackUpdate={(edit) => {
+                    if (edit) {
+                      const editIndex = allEdits.findIndex(
+                        (e) => e.id === edit.id,
+                      );
+                      setCurrentEditIndex(editIndex >= 0 ? editIndex : 0);
+                    }
+                  }}
+                  onEditsChange={(edits) => {
+                    setAllEdits(edits);
+                  }}
+                  compact={false}
+                />
+
+                {/* Playback Viewer - Shows content during playback */}
+                <PlaybackViewer doc={currentDoc} awareness={currentAwareness} />
+
+                {/* Playback History Feed */}
+                {allEdits.length > 0 && (
+                  <div className="max-w-2xl mx-auto w-full">
+                    <VersionTimeline
+                      edits={allEdits}
+                      currentEditIndex={currentEditIndex}
+                      height="120px"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </LexicalComposer>
       </LexicalCollaboration>
