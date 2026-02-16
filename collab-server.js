@@ -12,7 +12,7 @@
  *   HOST=0.0.0.0 PORT=1234 YPERSISTENCE=./db node collab-server.js
  */
 
-require("@y/websocket-server");
+import "@y/websocket-server";
 
 const host = process.env.HOST || "localhost";
 const port = process.env.PORT || "1234";
