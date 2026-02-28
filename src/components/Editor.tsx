@@ -122,7 +122,7 @@ export default function Editor() {
                 id="block-editor/collaborative"
                 // @ts-expect-error: WebsocketProvider is compatible at runtime but types don't match Lexical's ProviderFactory
                 providerFactory={providerFactory}
-                shouldBootstrap={false}
+                shouldBootstrap={true}
               />
               <MultiCursorPlugin />
             </div>
