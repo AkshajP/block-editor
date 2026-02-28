@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Block Editor Postgres",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "collab",
+      "Username": "postgres",
+      "SSLMode": "prefer"
+    }
+  }
+}
