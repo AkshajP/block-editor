@@ -8,11 +8,25 @@ import {
   COMMAND_PRIORITY_EDITOR,
   SELECTION_CHANGE_COMMAND,
 } from "lexical";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Awareness } from "y-protocols/awareness";
 
 import { useAwarenessContext } from "@/components/AwarenessContext";
 import { initializeAwareness, type UserAwareness } from "@/lib/collaboration";
+
+function useDebouncedCallback<T extends (...args: Parameters<T>) => void>(
+  fn: T,
+  delay: number,
+): T {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  return useCallback(
+    ((...args) => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => fn(...args), delay);
+    }) as T,
+    [fn, delay],
+  );
+}
 
 interface RemoteCursor {
   clientID: number;
@@ -53,7 +67,27 @@ export default function MultiCursorPlugin() {
     updateLocalStateRef.current = updateLocalState;
   }, [sharedAwareness]);
 
+  const broadcastSelectionUpdate = useDebouncedCallback(
+    useCallback((selection: ReturnType<typeof $getSelection>) => {
+      if (!$isRangeSelection(selection)) return;
+      updateLocalStateRef.current?.({
+        cursor: {
+          anchor: selection.anchor.offset,
+          head: selection.focus.offset,
+        },
+        selection: {
+          anchorKey: selection.anchor.key,
+          anchorOffset: selection.anchor.offset,
+          focusKey: selection.focus.key,
+          focusOffset: selection.focus.offset,
+        },
+      });
+    }, []),
+    300,
+  );
+
   // Track local selection changes and broadcast to awareness
+  // sharedAwareness in deps ensures this re-registers once awareness is available
   useEffect(() => {
     if (!awarenessRef.current || !updateLocalStateRef.current) return;
 
@@ -62,25 +96,7 @@ export default function MultiCursorPlugin() {
       () => {
         editor.getEditorState().read(() => {
           const selection = $getSelection();
-
-          if ($isRangeSelection(selection)) {
-            const anchorNode = selection.anchor.getNode();
-            const focusNode = selection.focus.getNode();
-
-            // Store selection information with node keys for recreation
-            updateLocalStateRef.current?.({
-              cursor: {
-                anchor: selection.anchor.offset,
-                head: selection.focus.offset,
-              },
-              selection: {
-                anchorKey: selection.anchor.key,
-                anchorOffset: selection.anchor.offset,
-                focusKey: selection.focus.key,
-                focusOffset: selection.focus.offset,
-              },
-            });
-          }
+          broadcastSelectionUpdate(selection);
         });
 
         return false;
@@ -91,7 +107,7 @@ export default function MultiCursorPlugin() {
     return () => {
       unsubscribe();
     };
-  }, [editor]);
+  }, [editor, sharedAwareness, broadcastSelectionUpdate]);
 
   // Calculate cursor position from selection data
   const calculateCursorPosition = (

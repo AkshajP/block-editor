@@ -18,12 +18,24 @@ wss.on("connection", (ws, req) => {
   try {
     setupWSConnection(ws, req);
   } catch (error) {
-    console.log("[Server] Closing connection", {
+    console.error("[Server] Error setting up connection", {
       error: error.message,
       name: error.name,
     });
+    ws.close();
   }
 });
+
+// Graceful shutdown: close all connections and stop accepting new ones
+function shutdown() {
+  wss.close(() => {
+    server.close(() => {
+      process.exit(0);
+    });
+  });
+}
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
 
 async function main() {
   if (
@@ -48,6 +60,10 @@ async function main() {
 
   setPersistence({
     bindState: async (docName, ydoc) => {
+      // Apply persisted state FIRST, then register the listener.
+      // Y.applyUpdate fires the "update" event — registering before apply would
+      // re-store the entire document state on every connection, causing DB bloat
+      // and cumulative drift in the reconstructed document.
       const persistedYdoc = await pgdb.getYDoc(docName);
       if (persistedYdoc) {
         Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(persistedYdoc));
