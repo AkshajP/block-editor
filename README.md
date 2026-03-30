@@ -6,7 +6,7 @@ pnpm i
 ```
 
 ```sh
-pnpm run dev:collab
+pnpm run dev
 ```
 
 You can see the edits show in pgadmin via docker.
