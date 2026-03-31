@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   reactCompiler: true,
+  transpilePackages: ["@block-editor/auth", "@block-editor/authz", "@block-editor/db"],
 };
 
 export default nextConfig;

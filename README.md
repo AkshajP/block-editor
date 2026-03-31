@@ -1,6 +1,7 @@
 To run the project you need-
 
 ```sh
+./scripts/bootstrap.sh
 npm i -g pnpm
 pnpm i
 ```

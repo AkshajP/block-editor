@@ -12,6 +12,9 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@block-editor/auth": "workspace:*",
+    "@block-editor/db": "workspace:*",
+    "@block-editor/authz": "workspace:*",
     "@base-ui/react": "^1.2.0",
     "@hookform/resolvers": "^5.2.2",
     "@lexical/list": "^0.41.0",

@@ -11,6 +11,26 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./configs/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2.3
+    container_name: block-editor-keycloak
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: postgres
+      KC_DB_PASSWORD: postgres
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    volumes:
+      - ./configs/realm-export.json:/opt/keycloak/data/import/realm-export.json
 
   pgadmin:
     image: dpage/pgadmin4:latest

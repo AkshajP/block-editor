@@ -1,0 +1,302 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  keycloakSub String   @unique @map("keycloak_sub")
+  email       String   @unique
+  displayName String   @map("display_name")
+  avatarUrl   String?  @map("avatar_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspacesCreated    Workspace[]           @relation("WorkspaceCreatedBy")
+  workspaceMemberships WorkspaceMember[]
+  workspaceMemberRoles WorkspaceMemberRole[]
+  directPermissions    UserDirectPermission[]
+  blocksIssued         Blocklist[]           @relation("BlocklistIssuedBy")
+  blocksReceived       Blocklist[]           @relation("BlocklistUser")
+  invitesSent          Invite[]              @relation("InvitesSentBy")
+  documentsCreated     Document[]            @relation("DocumentCreatedBy")
+  documentMembers      DocumentMember[]
+  snapshotsCreated     Snapshot[]            @relation("SnapshotCreatedBy")
+  templatesCreated     Template[]            @relation("TemplateCreatedBy")
+  auditLogs            AuditLog[]
+
+  @@map("users")
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  creator           User                   @relation("WorkspaceCreatedBy", fields: [createdBy], references: [id])
+  members           WorkspaceMember[]
+  memberRoles       WorkspaceMemberRole[]
+  directPermissions UserDirectPermission[]
+  blocklist         Blocklist[]
+  invites           Invite[]
+  documents         Document[]
+  templates         Template[]
+  auditLogs         AuditLog[]
+  roles             Role[]                 @relation("WorkspaceRoles")
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String   @id @default(cuid())
+  workspaceId String   @map("workspace_id")
+  userId      String   @map("user_id")
+  joinedAt    DateTime @default(now()) @map("joined_at")
+  isActive    Boolean  @default(true) @map("is_active")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  workspaceId String?  @map("workspace_id")
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace            Workspace?            @relation("WorkspaceRoles", fields: [workspaceId], references: [id], onDelete: Cascade)
+  rolePermissions      RolePermission[]
+  workspaceMemberRoles WorkspaceMemberRole[]
+  documentMembers      DocumentMember[]
+  invites              Invite[]
+
+  @@unique([name, workspaceId])
+  @@map("roles")
+}
+
+model Permission {
+  id          String @id @default(cuid())
+  name        String @unique
+  description String?
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @map("role_id")
+  permissionId String @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model WorkspaceMemberRole {
+  id          String   @id @default(cuid())
+  workspaceId String   @map("workspace_id")
+  userId      String   @map("user_id")
+  roleId      String   @map("role_id")
+  assignedAt  DateTime @default(now()) @map("assigned_at")
+  assignedBy  String?  @map("assigned_by")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId, roleId])
+  @@map("workspace_member_roles")
+}
+
+model UserDirectPermission {
+  id             String   @id @default(cuid())
+  userId         String   @map("user_id")
+  workspaceId    String   @map("workspace_id")
+  permissionName String   @map("permission_name")
+  granted        Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId, permissionName])
+  @@map("user_direct_permissions")
+}
+
+model Blocklist {
+  id            String   @id @default(cuid())
+  workspaceId   String   @map("workspace_id")
+  blockedUserId String?  @map("blocked_user_id")
+  blockedEmail  String?  @map("blocked_email")
+  blockedById   String   @map("blocked_by")
+  reason        String?
+  blockedAt     DateTime @default(now()) @map("blocked_at")
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  blockedUser User?     @relation("BlocklistUser", fields: [blockedUserId], references: [id])
+  blockedBy   User      @relation("BlocklistIssuedBy", fields: [blockedById], references: [id])
+
+  @@map("blocklist")
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+model Invite {
+  id          String       @id @default(cuid())
+  workspaceId String       @map("workspace_id")
+  email       String
+  roleId      String       @map("role_id")
+  invitedById String       @map("invited_by")
+  token       String       @unique @default(cuid())
+  status      InviteStatus @default(PENDING)
+  expiresAt   DateTime     @map("expires_at")
+  acceptedAt  DateTime?    @map("accepted_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  role      Role      @relation(fields: [roleId], references: [id])
+  invitedBy User      @relation("InvitesSentBy", fields: [invitedById], references: [id])
+
+  @@map("invites")
+}
+
+enum DocumentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Document {
+  id          String         @id @default(cuid())
+  workspaceId String         @map("workspace_id")
+  title       String
+  createdById String         @map("created_by")
+  status      DocumentStatus @default(DRAFT)
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User             @relation("DocumentCreatedBy", fields: [createdById], references: [id])
+  members   DocumentMember[]
+  snapshots Snapshot[]
+  variables DocumentVariable[]
+
+  @@map("documents")
+}
+
+model DocumentMember {
+  id         String   @id @default(cuid())
+  documentId String   @map("document_id")
+  userId     String   @map("user_id")
+  roleId     String   @map("role_id")
+  addedAt    DateTime @default(now()) @map("added_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     Role     @relation(fields: [roleId], references: [id])
+
+  @@unique([documentId, userId])
+  @@map("document_members")
+}
+
+model Snapshot {
+  id           String   @id @default(cuid())
+  documentId   String   @map("document_id")
+  name         String
+  description  String?
+  createdById  String   @map("created_by")
+  yjsState     Bytes    @map("yjs_state")
+  lexicalState Json     @map("lexical_state")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  document  Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("SnapshotCreatedBy", fields: [createdById], references: [id])
+
+  @@map("snapshots")
+}
+
+enum TemplateVariableType {
+  STATIC
+  COMPUTED
+}
+
+model Template {
+  id          String   @id @default(cuid())
+  workspaceId String   @map("workspace_id")
+  name        String
+  description String?
+  schema      Json
+  createdById String   @map("created_by")
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User               @relation("TemplateCreatedBy", fields: [createdById], references: [id])
+  variables TemplateVariable[]
+
+  @@map("templates")
+}
+
+model TemplateVariable {
+  id           String               @id @default(cuid())
+  templateId   String               @map("template_id")
+  name         String
+  type         TemplateVariableType
+  defaultValue String?              @map("default_value")
+  description  String?
+
+  template Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, name])
+  @@map("template_variables")
+}
+
+model DocumentVariable {
+  id           String @id @default(cuid())
+  documentId   String @map("document_id")
+  variableName String @map("variable_name")
+  value        String
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, variableName])
+  @@map("document_variables")
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  workspaceId  String   @map("workspace_id")
+  userId       String   @map("user_id")
+  action       String
+  resourceType String   @map("resource_type")
+  resourceId   String   @map("resource_id")
+  metadata     Json?
+  ipAddress    String?  @map("ip_address")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
