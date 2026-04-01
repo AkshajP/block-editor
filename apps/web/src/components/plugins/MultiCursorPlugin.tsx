@@ -40,7 +40,7 @@ interface RemoteCursor {
  * MultiCursorPlugin renders live cursors for all connected users
  * Uses Yjs Awareness to track cursor positions and selections
  */
-export default function MultiCursorPlugin() {
+export default function MultiCursorPlugin({ userName }: { userName?: string }) {
   const [editor] = useLexicalComposerContext();
   const { awareness: sharedAwareness } = useAwarenessContext();
 
@@ -63,9 +63,9 @@ export default function MultiCursorPlugin() {
     if (!sharedAwareness) return;
 
     awarenessRef.current = sharedAwareness;
-    const { updateLocalState } = initializeAwareness(sharedAwareness);
+    const { updateLocalState } = initializeAwareness(sharedAwareness, userName);
     updateLocalStateRef.current = updateLocalState;
-  }, [sharedAwareness]);
+  }, [sharedAwareness, userName]);
 
   const broadcastSelectionUpdate = useDebouncedCallback(
     useCallback((selection: ReturnType<typeof $getSelection>) => {
@@ -141,10 +141,11 @@ export default function MultiCursorPlugin() {
         }
 
         const rect = range.getBoundingClientRect();
+        const containerRect = editorRootRef.current!.getBoundingClientRect();
 
         return {
-          top: rect.top + window.scrollY,
-          left: rect.left + window.scrollX,
+          top: rect.top - containerRect.top,
+          left: rect.left - containerRect.left,
         };
       });
     } catch (error) {

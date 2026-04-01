@@ -11,7 +11,7 @@ import { ListPlugin } from "@lexical/react/LexicalListPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HeadingNode } from "@lexical/rich-text";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Awareness } from "y-protocols/awareness";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
@@ -40,61 +40,104 @@ const theme = {
   },
 };
 
-export default function Editor() {
-  const [currentAwareness, setCurrentAwareness] = useState<Awareness | null>(
-    null,
+interface EditorProps {
+  documentId: string;
+  canWrite: boolean;
+  userName: string;
+}
+
+export default function Editor({ documentId, canWrite, userName }: EditorProps) {
+  const [wsToken, setWsToken] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/documents/${documentId}/ws-token`)
+      .then((res) => {
+        if (!res.ok) throw new Error("forbidden");
+        return res.json();
+      })
+      .then((data) => setWsToken(data.token))
+      .catch(() => setTokenError(true));
+  }, [documentId]);
+
+  if (tokenError) {
+    return (
+      <div className="text-center py-10 text-slate-500">
+        You do not have permission to access this document.
+      </div>
+    );
+  }
+
+  if (!wsToken) {
+    return (
+      <div className="text-center py-10 text-slate-400 text-sm">
+        Connecting…
+      </div>
+    );
+  }
+
+  return (
+    <EditorInner
+      documentId={documentId}
+      canWrite={canWrite}
+      userName={userName}
+      wsToken={wsToken}
+    />
   );
+}
+
+interface EditorInnerProps {
+  documentId: string;
+  canWrite: boolean;
+  userName: string;
+  wsToken: string;
+}
+
+function EditorInner({ documentId, canWrite, userName, wsToken }: EditorInnerProps) {
+  const [currentAwareness, setCurrentAwareness] = useState<Awareness | null>(null);
 
   const initialConfig = {
-    // NOTE: Critical for collaboration - set editorState to null so CollaborationPlugin
-    // can initialize the content instead of using a default state
+    // NOTE: Critical for collaboration — set editorState to null so
+    // CollaborationPlugin can initialize the content.
     editorState: null,
     namespace: "MyEditor",
     nodes: [HeadingNode, ListNode, ListItemNode],
     theme,
+    editable: canWrite,
     onError: (error: Error) => console.error(error),
   };
 
-  // Get the WebSocket document from the provider
   const getDocFromMap = useCallback(
     (id: string, yjsDocMap: Map<string, Y.Doc>): Y.Doc => {
       let doc = yjsDocMap.get(id);
-
       if (doc === undefined) {
         doc = new Y.Doc();
         yjsDocMap.set(id, doc);
       } else {
         doc.load();
       }
-
       return doc;
     },
     [],
   );
 
-  // Create the WebSocket provider factory for real-time synchronization
   const providerFactory = useCallback(
     (id: string, yjsDocMap: Map<string, Y.Doc>) => {
       const doc = getDocFromMap(id, yjsDocMap);
 
       const provider = new WebsocketProvider(getWebSocketUrl(), id, doc, {
         connect: true,
+        params: { token: wsToken },
       });
 
-      // Get awareness directly from the provider
       const awareness = (provider as unknown as { awareness: Awareness })
         .awareness;
       setCurrentAwareness(awareness);
 
       return provider;
     },
-    [getDocFromMap],
+    [getDocFromMap, wsToken],
   );
-
-  // Track editor state changes
-  const handleChange = () => {
-    // State changes are now tracked through collaboration
-  };
 
   return (
     <AwarenessProvider awareness={currentAwareness}>
@@ -105,26 +148,30 @@ export default function Editor() {
             <div className="max-w-2xl mx-auto w-full p-4 border rounded-lg shadow-sm bg-background min-h-50 relative">
               <RichTextPlugin
                 contentEditable={
-                  <ContentEditable className="outline-none min-h-37.5 resize-none" />
+                  <ContentEditable
+                    className={`outline-none min-h-37.5 resize-none ${!canWrite ? "cursor-default" : ""}`}
+                  />
                 }
                 placeholder={
-                  <div className="absolute top-4 left-4 text-gray-400 pointer-events-none">
-                    Type '/' for commands...
-                  </div>
+                  canWrite ? (
+                    <div className="absolute top-4 left-4 text-gray-400 pointer-events-none">
+                      Type '/' for commands…
+                    </div>
+                  ) : null
                 }
                 ErrorBoundary={LexicalErrorBoundary}
               />
-              <SlashMenuPlugin />
+              {canWrite && <SlashMenuPlugin />}
               <ListPlugin />
               <HistoryPlugin />
-              <OnChangePlugin onChange={handleChange} />
+              <OnChangePlugin onChange={() => {}} />
               <CollaborationPlugin
-                id="block-editor/collaborative"
+                id={documentId}
                 // @ts-expect-error: WebsocketProvider is compatible at runtime but types don't match Lexical's ProviderFactory
                 providerFactory={providerFactory}
                 shouldBootstrap={false}
               />
-              <MultiCursorPlugin />
+              <MultiCursorPlugin userName={userName} />
             </div>
           </div>
         </LexicalComposer>

@@ -29,6 +29,7 @@ export const authConfig: NextAuthConfig = {
     async jwt({ token, account, profile }) {
       if (account?.provider === "keycloak" && profile?.sub) {
         token.keycloakSub = profile.sub;
+        token.idToken = account.id_token;
       }
       return token;
     },
@@ -37,16 +38,26 @@ export const authConfig: NextAuthConfig = {
       if (token.keycloakSub) {
         session.user.keycloakSub = token.keycloakSub as string;
       }
+      if (token.idToken) {
+        session.idToken = token.idToken as string;
+      }
       return session;
     },
   },
   session: {
     strategy: "jwt",
   },
+  events: {
+    async signOut(message) {
+      // Handled via redirect in the signOutAction — no server-side action needed
+      void message;
+    },
+  },
 };
 
 declare module "next-auth" {
   interface Session {
+    idToken?: string;
     user: {
       keycloakSub: string;
     } & import("next-auth").DefaultSession["user"];

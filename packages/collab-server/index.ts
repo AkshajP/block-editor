@@ -3,12 +3,51 @@
 import "dotenv/config";
 
 import { setPersistence, setupWSConnection } from "@y/websocket-server/utils";
+import { createHmac, timingSafeEqual } from "crypto";
 import http from "http";
 import { WebSocketServer } from "ws";
 import { PostgresqlPersistence } from "y-postgresql";
 import * as Y from "yjs";
 
-const server = http.createServer((request, response) => {
+function getWsSecret(): string {
+  return process.env.WS_SECRET ?? process.env.AUTH_SECRET ?? "dev-ws-secret";
+}
+
+function verifyWsToken(token: string | null, documentId: string): boolean {
+  if (!token) return false;
+
+  const dotIndex = token.lastIndexOf(".");
+  if (dotIndex === -1) return false;
+
+  const payloadB64 = token.slice(0, dotIndex);
+  const signature = token.slice(dotIndex + 1);
+
+  let payload: string;
+  try {
+    payload = Buffer.from(payloadB64, "base64url").toString("utf8");
+  } catch {
+    return false;
+  }
+
+  const parts = payload.split(":");
+  if (parts.length !== 3) return false;
+  const [tokenDocId, , expStr] = parts;
+
+  if (tokenDocId !== documentId) return false;
+  if (Date.now() > parseInt(expStr, 10)) return false;
+
+  const expected = createHmac("sha256", getWsSecret())
+    .update(payload)
+    .digest("hex");
+
+  try {
+    return timingSafeEqual(Buffer.from(signature, "hex"), Buffer.from(expected, "hex"));
+  } catch {
+    return false;
+  }
+}
+
+const server = http.createServer((_request, response) => {
   response.writeHead(200, { "Content-Type": "text/plain" });
   response.end("okay");
 });
@@ -16,11 +55,23 @@ const server = http.createServer((request, response) => {
 const wss = new WebSocketServer({ server });
 wss.on("connection", (ws, req) => {
   try {
+    const url = new URL(req.url!, `http://localhost`);
+    // Room name is the first path segment (y-websocket convention)
+    const documentId = decodeURIComponent(url.pathname.slice(1));
+    const token = url.searchParams.get("token");
+
+    if (!verifyWsToken(token, documentId)) {
+      console.warn(`[Server] Rejected unauthorized connection for room "${documentId}"`);
+      ws.close(4001, "Unauthorized");
+      return;
+    }
+
     setupWSConnection(ws, req);
   } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
     console.error("[Server] Error setting up connection", {
-      error: error.message,
-      name: error.name,
+      error: err.message,
+      name: err.name,
     });
     ws.close();
   }

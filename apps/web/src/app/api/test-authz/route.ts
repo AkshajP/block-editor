@@ -1,8 +1,5 @@
 import { auth } from "@block-editor/auth";
-import {
-  DocumentPolicy,
-  getUserWorkspacePermissions,
-} from "@block-editor/authz";
+import { DocumentPolicy, getDocumentPermissions } from "@block-editor/authz";
 import { prisma } from "@block-editor/db";
 import { NextResponse } from "next/server";
 
@@ -26,7 +23,7 @@ export async function GET(request: Request) {
   if (!document)
     return NextResponse.json({ error: "document not found" }, { status: 404 });
 
-  const permissions = await getUserWorkspacePermissions(user.id, document.workspaceId);
+  const permissions = await getDocumentPermissions(user.id, document);
 
   return NextResponse.json({
     permissions,

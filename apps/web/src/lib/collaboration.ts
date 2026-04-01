@@ -102,40 +102,11 @@ export const getRandomCursorColor = (clientID: number): string => {
 };
 
 /**
- * Generate a random user name for anonymous users
- */
-export const generateRandomUserName = (): string => {
-  const adjectives = [
-    "Swift",
-    "Bright",
-    "Clever",
-    "Bold",
-    "Quick",
-    "Smart",
-    "Keen",
-  ];
-  const animals = [
-    "Panda",
-    "Eagle",
-    "Tiger",
-    "Fox",
-    "Wolf",
-    "Bear",
-    "Lion",
-    "Otter",
-  ];
-
-  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-  const animal = animals[Math.floor(Math.random() * animals.length)];
-
-  return `${adj} ${animal}`;
-};
-
-/**
  * Initialize awareness for a Yjs document or Awareness object
  */
 export const initializeAwareness = (
   docOrAwareness: Doc | Awareness,
+  name?: string,
 ): {
   awareness: Awareness;
   clientID: number;
@@ -154,7 +125,7 @@ export const initializeAwareness = (
   }
   const clientID = awareness.clientID;
 
-  const userName = generateRandomUserName();
+  const userName = name ?? "Unknown";
   const color = getRandomCursorColor(clientID);
 
   const updateLocalState = (state: Partial<UserAwareness>) => {

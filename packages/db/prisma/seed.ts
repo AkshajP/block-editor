@@ -161,26 +161,34 @@ async function main() {
   });
   console.log(`  Workspace "${devWorkspace.name}" (id: ${devWorkspace.id})`);
 
-  console.log("Adding workspace members and assigning roles...");
+  console.log("Adding workspace members...");
   for (const u of seededUsers) {
     await prisma.workspaceMember.upsert({
       where: { workspaceId_userId: { workspaceId: devWorkspace.id, userId: u.id } },
       update: { isActive: true },
       create: { workspaceId: devWorkspace.id, userId: u.id },
     });
-
-    const role = await prisma.role.findFirstOrThrow({
-      where: { name: u.role, workspaceId: null },
-    });
-    await prisma.workspaceMemberRole.upsert({
-      where: {
-        workspaceId_userId_roleId: { workspaceId: devWorkspace.id, userId: u.id, roleId: role.id },
-      },
-      update: {},
-      create: { workspaceId: devWorkspace.id, userId: u.id, roleId: role.id },
-    });
-    console.log(`  "${u.email}" → ${u.role}`);
+    console.log(`  "${u.email}" joined workspace`);
   }
+
+  // Only the Admin user gets a workspace-level role.
+  // Editor and Viewer access is granted per-document via DocumentMember.
+  console.log("Assigning workspace Admin role to admin user only...");
+  const adminRole = await prisma.role.findFirstOrThrow({
+    where: { name: "Admin", workspaceId: null },
+  });
+  await prisma.workspaceMemberRole.upsert({
+    where: {
+      workspaceId_userId_roleId: {
+        workspaceId: devWorkspace.id,
+        userId: adminUser.id,
+        roleId: adminRole.id,
+      },
+    },
+    update: {},
+    create: { workspaceId: devWorkspace.id, userId: adminUser.id, roleId: adminRole.id },
+  });
+  console.log(`  "admin@dev.local" → Admin (workspace role)`);
 
   console.log("Seeding dev document...");
   const devDoc = await prisma.document.upsert({
