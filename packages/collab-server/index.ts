@@ -2,12 +2,18 @@
 
 import "dotenv/config";
 
-import { setPersistence, setupWSConnection } from "@y/websocket-server/utils";
+import {
+  docs,
+  setPersistence,
+  setupWSConnection,
+} from "@y/websocket-server/utils";
 import { createHmac, timingSafeEqual } from "crypto";
 import http from "http";
 import { WebSocketServer } from "ws";
 import { PostgresqlPersistence } from "y-postgresql";
 import * as Y from "yjs";
+
+const CHECKPOINT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 function getWsSecret(): string {
   return process.env.WS_SECRET ?? process.env.AUTH_SECRET ?? "dev-ws-secret";
@@ -41,7 +47,10 @@ function verifyWsToken(token: string | null, documentId: string): boolean {
     .digest("hex");
 
   try {
-    return timingSafeEqual(Buffer.from(signature, "hex"), Buffer.from(expected, "hex"));
+    return timingSafeEqual(
+      Buffer.from(signature, "hex"),
+      Buffer.from(expected, "hex"),
+    );
   } catch {
     return false;
   }
@@ -61,7 +70,9 @@ wss.on("connection", (ws, req) => {
     const token = url.searchParams.get("token");
 
     if (!verifyWsToken(token, documentId)) {
-      console.warn(`[Server] Rejected unauthorized connection for room "${documentId}"`);
+      console.warn(
+        `[Server] Rejected unauthorized connection for room "${documentId}"`,
+      );
       ws.close(4001, "Unauthorized");
       return;
     }
@@ -77,16 +88,31 @@ wss.on("connection", (ws, req) => {
   }
 });
 
-// Graceful shutdown: close all connections and stop accepting new ones
-function shutdown() {
-  wss.close(() => {
-    server.close(() => {
-      process.exit(0);
-    });
-  });
+async function flushActiveDocs(pgdb: PostgresqlPersistence) {
+  if (docs.size === 0) return;
+  console.log(`[Checkpoint] Flushing ${docs.size} active document(s)`);
+  await Promise.allSettled(
+    Array.from(docs.keys()).map((docName) =>
+      pgdb
+        .getStateVector(docName)
+        .catch((err) =>
+          console.error(`[Checkpoint] Failed to flush "${docName}":`, err),
+        ),
+    ),
+  );
 }
-process.on("SIGTERM", shutdown);
-process.on("SIGINT", shutdown);
+
+// Graceful shutdown: flush active docs, then close all connections
+function makeShutdown(pgdb: PostgresqlPersistence) {
+  return async () => {
+    await flushActiveDocs(pgdb);
+    wss.close(() => {
+      server.close(() => {
+        process.exit(0);
+      });
+    });
+  };
+}
 
 async function main() {
   if (
@@ -129,6 +155,16 @@ async function main() {
     },
     provider: pgdb,
   });
+
+  const checkpointInterval = setInterval(
+    () => flushActiveDocs(pgdb),
+    CHECKPOINT_INTERVAL_MS,
+  );
+  checkpointInterval.unref(); // don't keep the process alive for this alone
+
+  const shutdown = makeShutdown(pgdb);
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 
   server.listen(1234, () => {
     console.log(`listening on port:1234`);
