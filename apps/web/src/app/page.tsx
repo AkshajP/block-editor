@@ -13,22 +13,23 @@ export default async function DashboardPage() {
   });
   if (!user) redirect("/api/auth/signin");
 
-  const documentMembers = await prisma.documentMember.findMany({
-    where: { userId: user.id },
-    include: {
-      document: {
-        include: { createdBy: { select: { displayName: true } } },
-      },
+  const docs = await prisma.document.findMany({
+    where: {
+      OR: [
+        { createdById: user.id },
+        { members: { some: { userId: user.id } } },
+      ],
     },
-    orderBy: { addedAt: "desc" },
+    include: { createdBy: { select: { displayName: true } } },
+    orderBy: { updatedAt: "desc" },
   });
 
-  const documents = documentMembers.map((dm) => ({
-    id: dm.document.id,
-    title: dm.document.title,
-    status: dm.document.status as string,
-    updatedAt: dm.document.updatedAt.toISOString(),
-    createdByName: dm.document.createdBy.displayName,
+  const documents = docs.map((doc) => ({
+    id: doc.id,
+    title: doc.title,
+    status: doc.status as string,
+    updatedAt: doc.updatedAt.toISOString(),
+    createdByName: doc.createdBy.displayName,
   }));
 
   return (
