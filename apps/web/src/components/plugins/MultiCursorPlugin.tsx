@@ -1,6 +1,7 @@
 "use client";
 
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+import { createDOMRange, createRectsFromDOMRange } from "@lexical/selection";
 import {
   $getNodeByKey,
   $getSelection,
@@ -17,28 +18,42 @@ import { initializeAwareness, type UserAwareness } from "@/lib/collaboration";
 function useDebouncedCallback<T extends (...args: Parameters<T>) => void>(
   fn: T,
   delay: number,
-): T {
+): (...args: Parameters<T>) => void {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fnRef = useRef(fn);
+  useEffect(() => {
+    fnRef.current = fn;
+  });
   return useCallback(
-    ((...args) => {
+    (...args: Parameters<T>) => {
       if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => fn(...args), delay);
-    }) as T,
-    [fn, delay],
+      timerRef.current = setTimeout(() => fnRef.current(...args), delay);
+    },
+    [delay],
   );
+}
+
+interface SelectionRect {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
 }
 
 interface RemoteCursor {
   clientID: number;
   name: string;
   color: string;
-  position: { top: number; left: number };
-  selection?: { top: number; left: number; width: number; height: number };
+  /** Position of the caret (focus end of selection) */
+  caretPosition: { top: number; left: number; height: number };
+  /** All rects covered by the selection — empty when collapsed */
+  selectionRects: SelectionRect[];
 }
 
 /**
- * MultiCursorPlugin renders live cursors for all connected users
- * Uses Yjs Awareness to track cursor positions and selections
+ * MultiCursorPlugin renders live cursors and selection highlights for remote users.
+ * Position logic mirrors @lexical/yjs: uses createDOMRange + createRectsFromDOMRange
+ * from @lexical/selection, offset against the cursor overlay's offsetParent.
  */
 export default function MultiCursorPlugin({ userName }: { userName?: string }) {
   const [editor] = useLexicalComposerContext();
@@ -47,21 +62,15 @@ export default function MultiCursorPlugin({ userName }: { userName?: string }) {
   const [remoteCursors, setRemoteCursors] = useState<Map<number, RemoteCursor>>(
     new Map(),
   );
-  const editorRootRef = useRef<HTMLElement | null>(null);
+
+  const cursorOverlayRef = useRef<HTMLDivElement>(null);
   const updateLocalStateRef = useRef<
     ((state: Partial<UserAwareness>) => void) | null
   >(null);
   const awarenessRef = useRef<Awareness | null>(null);
 
-  // Get editor root element
-  useEffect(() => {
-    editorRootRef.current = editor.getRootElement();
-  }, [editor]);
-
-  // Initialize awareness tracking
   useEffect(() => {
     if (!sharedAwareness) return;
-
     awarenessRef.current = sharedAwareness;
     const { updateLocalState } = initializeAwareness(sharedAwareness, userName);
     updateLocalStateRef.current = updateLocalState;
@@ -86,8 +95,6 @@ export default function MultiCursorPlugin({ userName }: { userName?: string }) {
     300,
   );
 
-  // Track local selection changes and broadcast to awareness
-  // sharedAwareness in deps ensures this re-registers once awareness is available
   useEffect(() => {
     if (!awarenessRef.current || !updateLocalStateRef.current) return;
 
@@ -95,111 +102,147 @@ export default function MultiCursorPlugin({ userName }: { userName?: string }) {
       SELECTION_CHANGE_COMMAND,
       () => {
         editor.getEditorState().read(() => {
-          const selection = $getSelection();
-          broadcastSelectionUpdate(selection);
+          broadcastSelectionUpdate($getSelection());
         });
-
         return false;
       },
       COMMAND_PRIORITY_EDITOR,
     );
 
-    return () => {
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, [editor, sharedAwareness, broadcastSelectionUpdate]);
 
-  // Calculate cursor position from selection data
-  const calculateCursorPosition = (
-    selectionData: any,
-  ): { top: number; left: number } | null => {
-    if (!editorRootRef.current || !selectionData) return null;
+  /**
+   * Returns the caret position (at the focus/last rect) and all selection rects,
+   * all offset against cursorOverlay.offsetParent — matching Lexical's own approach.
+   */
+  const calculateCursorData = (
+    selectionData: Record<string, unknown>,
+  ): Pick<RemoteCursor, "caretPosition" | "selectionRects"> | null => {
+    const overlay = cursorOverlayRef.current;
+    if (!overlay || !selectionData) return null;
+
+    const { anchorKey, anchorOffset, focusKey, focusOffset } = selectionData as {
+      anchorKey: string;
+      anchorOffset: number;
+      focusKey: string;
+      focusOffset: number;
+    };
+    if (!anchorKey || !focusKey) {
+      console.log("[cursor] missing anchorKey/focusKey", selectionData);
+      return null;
+    }
 
     try {
       return editor.getEditorState().read(() => {
-        const { focusKey, focusOffset } = selectionData;
-
-        if (!focusKey) return null;
-
-        const node = $getNodeByKey(focusKey);
-        if (!node) return null;
-
-        // Get the DOM node
-        const domNode = editor.getElementByKey(focusKey);
-        if (!domNode) return null;
-
-        // Create a range to get cursor position
-        const range = document.createRange();
-        const textNode = domNode.firstChild || domNode;
-
-        if (textNode.nodeType === Node.TEXT_NODE && textNode.textContent) {
-          const offset = Math.min(focusOffset, textNode.textContent.length);
-          range.setStart(textNode, offset);
-          range.setEnd(textNode, offset);
-        } else {
-          range.selectNode(domNode);
+        const anchorNode = $getNodeByKey(anchorKey);
+        const focusNode = $getNodeByKey(focusKey);
+        if (!anchorNode || !focusNode) {
+          console.log("[cursor] node not found in editor state", { anchorKey, focusKey });
+          return null;
         }
 
-        const rect = range.getBoundingClientRect();
-        const containerRect = editorRootRef.current!.getBoundingClientRect();
+        const range = createDOMRange(editor, anchorNode, anchorOffset, focusNode, focusOffset);
+        if (!range) {
+          console.log("[cursor] createDOMRange returned null");
+          return null;
+        }
+
+        const domRects = createRectsFromDOMRange(editor, range);
+        if (!domRects.length) {
+          console.log("[cursor] createRectsFromDOMRange returned no rects");
+          return null;
+        }
+
+        const offsetParent = overlay.offsetParent;
+        if (!offsetParent) {
+          console.log("[cursor] overlay has no offsetParent");
+          return null;
+        }
+        const containerRect = offsetParent.getBoundingClientRect();
+
+        const selectionRects: SelectionRect[] = domRects.map((r) => ({
+          top: r.top - containerRect.top,
+          left: r.left - containerRect.left,
+          width: r.width,
+          height: r.height,
+        }));
+
+        const lastRect = selectionRects[selectionRects.length - 1];
+        const caretPosition = {
+          top: lastRect.top,
+          left: lastRect.left + lastRect.width,
+          height: lastRect.height,
+        };
+
+        const isCollapsed =
+          anchorKey === focusKey && anchorOffset === focusOffset;
+
+        console.log("[cursor] calculated", { caretPosition, selectionRects, isCollapsed });
 
         return {
-          top: rect.top - containerRect.top,
-          left: rect.left - containerRect.left,
+          caretPosition,
+          selectionRects: isCollapsed ? [] : selectionRects,
         };
       });
-    } catch (error) {
-      console.error("Error calculating cursor position:", error);
+    } catch (err) {
+      console.error("[cursor] error", err);
       return null;
     }
   };
 
-  // Listen for awareness updates from other users
   useEffect(() => {
     if (!awarenessRef.current || !sharedAwareness) return;
 
     const awareness = awarenessRef.current;
 
     const handleAwarenessChange = () => {
-      const newRemoteCursors = new Map<number, RemoteCursor>();
       const states = awareness.getStates();
       const localClientID = awareness.clientID;
+      console.log("[cursor] awareness change — states:", states.size, "local:", localClientID);
 
-      states.forEach((state: any, clientID: number) => {
-        // Skip local user
-        if (clientID === localClientID) return;
+      setRemoteCursors((prev) => {
+        const next = new Map<number, RemoteCursor>();
 
-        const userState = state.user;
-        const selectionState = state.selection;
+        states.forEach((state: Record<string, unknown>, clientID: number) => {
+          if (clientID === localClientID) return;
+          console.log("[cursor] remote client", clientID, "state:", state);
 
-        if (userState && selectionState) {
-          // Calculate cursor position from selection data
-          const position = calculateCursorPosition(selectionState);
+          const userState =
+            (state.user as { name?: string; color?: string } | undefined) ??
+            (state.name
+              ? { name: state.name as string, color: state.color as string }
+              : undefined);
+          const selectionState = state.selection as Record<string, unknown> | undefined;
 
-          if (position) {
-            newRemoteCursors.set(clientID, {
-              clientID,
-              name: userState.name || "Unknown",
-              color: userState.color || "#999",
-              position,
-            });
+          if (!userState) {
+            console.log("[cursor] client", clientID, "has no user state — skipping");
+            return;
           }
-        }
-      });
 
-      setRemoteCursors(newRemoteCursors);
+          const cursorData = selectionState ? calculateCursorData(selectionState) : null;
+          const prevCursor = prev.get(clientID);
+          const resolvedData = cursorData ?? (prevCursor
+            ? { caretPosition: prevCursor.caretPosition, selectionRects: prevCursor.selectionRects }
+            : null);
+
+          if (!resolvedData) return;
+
+          next.set(clientID, {
+            clientID,
+            name: userState.name ?? "Unknown",
+            color: userState.color ?? "#999",
+            ...resolvedData,
+          });
+        });
+
+        return next;
+      });
     };
 
-    // Initial update
     handleAwarenessChange();
-
-    // Listen for changes
     awareness.on("change", handleAwarenessChange);
-
-    // Also update on editor changes to recalculate positions
-    const removeUpdateListener = editor.registerUpdateListener(() => {
-      handleAwarenessChange();
-    });
+    const removeUpdateListener = editor.registerUpdateListener(handleAwarenessChange);
 
     return () => {
       awareness.off("change", handleAwarenessChange);
@@ -208,37 +251,57 @@ export default function MultiCursorPlugin({ userName }: { userName?: string }) {
   }, [sharedAwareness, editor]);
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-50 overflow-visible">
+    <div
+      ref={cursorOverlayRef}
+      className="pointer-events-none absolute inset-0 z-50 overflow-visible"
+    >
       {Array.from(remoteCursors.values()).map((cursor) => (
-        <div
-          key={cursor.clientID}
-          className="absolute"
-          style={{
-            top: `${cursor.position.top}px`,
-            left: `${cursor.position.left}px`,
-            transform: "translateX(-1px)",
-          }}
-        >
-          {/* Cursor line */}
-          <div
-            className="w-0.5 h-5 animate-pulse"
-            style={{
-              backgroundColor: cursor.color,
-              opacity: 0.9,
-            }}
-          />
+        <div key={cursor.clientID}>
+          {/* Selection highlight rects */}
+          {cursor.selectionRects.map((rect, i) => (
+            <div
+              key={i}
+              className="absolute"
+              style={{
+                top: `${rect.top}px`,
+                left: `${rect.left}px`,
+                width: `${rect.width}px`,
+                height: `${rect.height}px`,
+                backgroundColor: cursor.color,
+                opacity: 0.2,
+                zIndex: 40,
+              }}
+            />
+          ))}
 
-          {/* User label */}
+          {/* Caret line + name label */}
           <div
-            className="absolute flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-white whitespace-nowrap"
+            className="absolute"
             style={{
-              backgroundColor: cursor.color,
-              top: "-28px",
-              left: "0px",
+              top: `${cursor.caretPosition.top}px`,
+              left: `${cursor.caretPosition.left}px`,
+              transform: "translateX(-1px)",
             }}
           >
-            <span className="w-2 h-2 rounded-full bg-white" />
-            {cursor.name}
+            <div
+              style={{
+                width: "2px",
+                height: `${cursor.caretPosition.height}px`,
+                backgroundColor: cursor.color,
+                opacity: 0.9,
+              }}
+            />
+            <div
+              className="absolute flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-white whitespace-nowrap"
+              style={{
+                backgroundColor: cursor.color,
+                top: "-28px",
+                left: "0px",
+              }}
+            >
+              <span className="w-2 h-2 rounded-full bg-white" />
+              {cursor.name}
+            </div>
           </div>
         </div>
       ))}

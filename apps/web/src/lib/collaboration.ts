@@ -129,7 +129,10 @@ export const initializeAwareness = (
   const color = getRandomCursorColor(clientID);
 
   const updateLocalState = (state: Partial<UserAwareness>) => {
+    // Merge with existing state so we don't clobber fields set by CollaborationPlugin
+    const current = awareness.getLocalState() ?? {};
     awareness.setLocalState({
+      ...current,
       clientID,
       user: { name: userName, color },
       lastUpdate: Date.now(),

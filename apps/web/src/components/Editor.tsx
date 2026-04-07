@@ -11,7 +11,7 @@ import { ListPlugin } from "@lexical/react/LexicalListPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HeadingNode } from "@lexical/rich-text";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Awareness } from "y-protocols/awareness";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
@@ -95,6 +95,7 @@ interface EditorInnerProps {
 
 function EditorInner({ documentId, canWrite, userName, wsToken }: EditorInnerProps) {
   const [currentAwareness, setCurrentAwareness] = useState<Awareness | null>(null);
+  const hiddenCursorsRef = useRef<HTMLDivElement>(null);
 
   const initialConfig = {
     // NOTE: Critical for collaboration — set editorState to null so
@@ -165,11 +166,13 @@ function EditorInner({ documentId, canWrite, userName, wsToken }: EditorInnerPro
               <ListPlugin />
               <HistoryPlugin />
               <OnChangePlugin onChange={() => {}} />
+              <div ref={hiddenCursorsRef} style={{ display: "none" }} />
               <CollaborationPlugin
                 id={documentId}
                 // @ts-expect-error: WebsocketProvider is compatible at runtime but types don't match Lexical's ProviderFactory
                 providerFactory={providerFactory}
                 shouldBootstrap={false}
+                cursorsContainerRef={hiddenCursorsRef}
               />
               <MultiCursorPlugin userName={userName} />
             </div>
