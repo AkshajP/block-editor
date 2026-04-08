@@ -14,7 +14,7 @@
     "@block-editor/db": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "typescript": "^6",
     "@types/node": "^25"
   }
 }
