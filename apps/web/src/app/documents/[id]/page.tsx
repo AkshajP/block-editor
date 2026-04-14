@@ -27,12 +27,14 @@ export default async function DocumentPage({
   if (!DocumentPolicy.canRead(permissions)) notFound();
 
   const canWrite = DocumentPolicy.canWrite(permissions, document);
+  const canRename = DocumentPolicy.canRename(user, permissions, document);
 
   return (
     <EditorPage
       documentId={id}
       title={document.title}
       canWrite={canWrite}
+      canRename={canRename}
       userName={user.displayName}
     />
   );
