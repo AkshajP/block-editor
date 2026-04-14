@@ -28,13 +28,19 @@ export default async function DocumentPage({
 
   const canWrite = DocumentPolicy.canWrite(permissions, document);
   const canRename = DocumentPolicy.canRename(user, permissions, document);
+  const canPublish = DocumentPolicy.canPublish(user, permissions, document);
+  const canChangeVisibility = DocumentPolicy.canChangeVisibility(user, permissions, document);
 
   return (
     <EditorPage
       documentId={id}
       title={document.title}
+      initialStatus={document.status}
+      initialIsPublic={document.isPublic}
       canWrite={canWrite}
       canRename={canRename}
+      canPublish={canPublish}
+      canChangeVisibility={canChangeVisibility}
       userName={user.displayName}
     />
   );

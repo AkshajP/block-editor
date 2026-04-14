@@ -82,6 +82,7 @@ export async function getDocumentPermissions(
     workspaceId: string;
     createdById: string;
     status: string;
+    isPublic: boolean;
   }
 ): Promise<string[]> {
   // 1. Owner gets everything.
@@ -93,8 +94,8 @@ export async function getDocumentPermissions(
 
   const permissionSet = new Set<string>();
 
-  // 3. Published document → all workspace members can read.
-  if (document.status === "PUBLISHED") {
+  // 3. Published + public document → all workspace members can read.
+  if (document.status === "PUBLISHED" && document.isPublic) {
     const member = await prisma.workspaceMember.findUnique({
       where: {
         workspaceId_userId: { workspaceId: document.workspaceId, userId },

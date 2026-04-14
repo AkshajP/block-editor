@@ -76,6 +76,35 @@ export class DocumentPolicy {
   }
 
   /**
+   * User can publish/unpublish if they are the document creator OR have document.manage_all.
+   */
+  static canPublish(
+    user: Pick<User, "id">,
+    userPermissions: string[],
+    document: Pick<Document, "createdById">
+  ): boolean {
+    if (hasPermission(userPermissions, PERMISSIONS.DOCUMENT_MANAGE_ALL)) {
+      return true;
+    }
+    return document.createdById === user.id;
+  }
+
+  /**
+   * User can change visibility (public/private) if they are the document creator
+   * OR have document.manage_all (workspace admins and document-level admins).
+   */
+  static canChangeVisibility(
+    user: Pick<User, "id">,
+    userPermissions: string[],
+    document: Pick<Document, "createdById">
+  ): boolean {
+    if (hasPermission(userPermissions, PERMISSIONS.DOCUMENT_MANAGE_ALL)) {
+      return true;
+    }
+    return document.createdById === user.id;
+  }
+
+  /**
    * Full admin control over any document in workspace.
    */
   static canManageAll(userPermissions: string[]): boolean {

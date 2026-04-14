@@ -13,11 +13,18 @@ export default async function DashboardPage() {
   });
   if (!user) redirect("/api/auth/signin");
 
+  const workspaceMemberships = await prisma.workspaceMember.findMany({
+    where: { userId: user.id, isActive: true },
+    select: { workspaceId: true },
+  });
+  const workspaceIds = workspaceMemberships.map((m) => m.workspaceId);
+
   const docs = await prisma.document.findMany({
     where: {
       OR: [
         { createdById: user.id },
         { members: { some: { userId: user.id } } },
+        { workspaceId: { in: workspaceIds }, status: "PUBLISHED", isPublic: true },
       ],
     },
     include: { createdBy: { select: { displayName: true } } },

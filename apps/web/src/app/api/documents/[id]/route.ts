@@ -28,6 +28,33 @@ export async function PATCH(
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const body = await request.json();
+
+  const VALID_STATUSES = ["DRAFT", "PUBLISHED", "ARCHIVED"] as const;
+  type ValidStatus = (typeof VALID_STATUSES)[number];
+
+  if ("status" in body || "isPublic" in body) {
+    if (!DocumentPolicy.canPublish(user, permissions, document))
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+
+    const data: { status?: ValidStatus; isPublic?: boolean } = {};
+
+    if ("status" in body) {
+      const status = body.status as string;
+      if (!VALID_STATUSES.includes(status as ValidStatus))
+        return NextResponse.json({ error: "invalid status" }, { status: 400 });
+      data.status = status as ValidStatus;
+    }
+
+    if ("isPublic" in body) {
+      if (typeof body.isPublic !== "boolean")
+        return NextResponse.json({ error: "isPublic must be a boolean" }, { status: 400 });
+      data.isPublic = body.isPublic;
+    }
+
+    const updated = await prisma.document.update({ where: { id }, data });
+    return NextResponse.json({ id: updated.id, status: updated.status, isPublic: updated.isPublic });
+  }
+
   const title = typeof body.title === "string" ? body.title.trim() : null;
   if (!title)
     return NextResponse.json({ error: "title is required" }, { status: 400 });

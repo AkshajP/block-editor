@@ -32,7 +32,7 @@ export async function GET() {
       OR: [
         { createdById: user.id },
         { members: { some: { userId: user.id } } },
-        { workspaceId: { in: workspaceIds }, status: "PUBLISHED" },
+        { workspaceId: { in: workspaceIds }, status: "PUBLISHED", isPublic: true },
       ],
     },
     include: { createdBy: { select: { displayName: true } } },
