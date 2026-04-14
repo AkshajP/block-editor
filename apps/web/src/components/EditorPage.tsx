@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import Editor from "./Editor";
@@ -18,6 +19,7 @@ export default function EditorPage({
   userName,
 }: Props) {
   const router = useRouter();
+  const [showSnapshots, setShowSnapshots] = useState(false);
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -36,9 +38,24 @@ export default function EditorPage({
             Read only
           </span>
         )}
+        <button
+          onClick={() => setShowSnapshots((v) => !v)}
+          className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+            showSnapshots
+              ? "bg-slate-900 text-white border-slate-900"
+              : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"
+          }`}
+        >
+          Snapshots
+        </button>
       </header>
-      <div className="max-w-3xl mx-auto px-6 py-10">
-        <Editor documentId={documentId} canWrite={canWrite} userName={userName} />
+      <div className="max-w-5xl mx-auto px-6 py-10">
+        <Editor
+          documentId={documentId}
+          canWrite={canWrite}
+          userName={userName}
+          showSnapshots={showSnapshots}
+        />
       </div>
     </main>
   );

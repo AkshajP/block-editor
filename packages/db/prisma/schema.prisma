@@ -225,7 +225,6 @@ model Snapshot {
   name         String
   description  String?
   createdById  String   @map("created_by")
-  yjsState     Bytes    @map("yjs_state")
   lexicalState Json     @map("lexical_state")
   createdAt    DateTime @default(now()) @map("created_at")
 
@@ -233,6 +232,19 @@ model Snapshot {
   createdBy User     @relation("SnapshotCreatedBy", fields: [createdById], references: [id])
 
   @@map("snapshots")
+}
+
+model DocumentUpdate {
+  id         String   @id @default(cuid())
+  documentId String   @map("document_id")
+  userId     String?  @map("user_id")
+  clientId   Int      @map("client_id")
+  sessionId  String   @map("session_id")
+  update     Bytes
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([documentId, createdAt])
+  @@map("document_updates")
 }
 
 enum TemplateVariableType {

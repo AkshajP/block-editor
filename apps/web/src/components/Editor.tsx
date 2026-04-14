@@ -21,6 +21,7 @@ import { getWebSocketUrl } from "@/lib/collaboration";
 import { AwarenessProvider } from "./AwarenessContext";
 import MultiCursorPlugin from "./plugins/MultiCursorPlugin";
 import SlashMenuPlugin from "./plugins/SlashMenuPlugin";
+import SnapshotPanel from "./SnapshotPanel";
 import UserPresence from "./UserPresence";
 
 const theme = {
@@ -44,9 +45,10 @@ interface EditorProps {
   documentId: string;
   canWrite: boolean;
   userName: string;
+  showSnapshots?: boolean;
 }
 
-export default function Editor({ documentId, canWrite, userName }: EditorProps) {
+export default function Editor({ documentId, canWrite, userName, showSnapshots = false }: EditorProps) {
   const [wsToken, setWsToken] = useState<string | null>(null);
   const [tokenError, setTokenError] = useState(false);
 
@@ -82,6 +84,7 @@ export default function Editor({ documentId, canWrite, userName }: EditorProps) 
       canWrite={canWrite}
       userName={userName}
       wsToken={wsToken}
+      showSnapshots={showSnapshots}
     />
   );
 }
@@ -91,9 +94,10 @@ interface EditorInnerProps {
   canWrite: boolean;
   userName: string;
   wsToken: string;
+  showSnapshots: boolean;
 }
 
-function EditorInner({ documentId, canWrite, userName, wsToken }: EditorInnerProps) {
+function EditorInner({ documentId, canWrite, userName, wsToken, showSnapshots }: EditorInnerProps) {
   const [currentAwareness, setCurrentAwareness] = useState<Awareness | null>(null);
   const hiddenCursorsRef = useRef<HTMLDivElement>(null);
 
@@ -144,38 +148,45 @@ function EditorInner({ documentId, canWrite, userName, wsToken }: EditorInnerPro
     <AwarenessProvider awareness={currentAwareness}>
       <LexicalCollaboration>
         <LexicalComposer initialConfig={initialConfig}>
-          <div className="flex flex-col gap-4 w-full">
-            <UserPresence />
-            <div className="max-w-2xl mx-auto w-full p-4 border rounded-lg shadow-sm bg-background min-h-50 relative">
-              <RichTextPlugin
-                contentEditable={
-                  <ContentEditable
-                    className={`outline-none min-h-37.5 resize-none ${!canWrite ? "cursor-default" : ""}`}
-                  />
-                }
-                placeholder={
-                  canWrite ? (
-                    <div className="absolute top-4 left-4 text-gray-400 pointer-events-none">
-                      Type '/' for commands…
-                    </div>
-                  ) : null
-                }
-                ErrorBoundary={LexicalErrorBoundary}
-              />
-              {canWrite && <SlashMenuPlugin />}
-              <ListPlugin />
-              <HistoryPlugin />
-              <OnChangePlugin onChange={() => {}} />
-              <div ref={hiddenCursorsRef} style={{ display: "none" }} />
-              <CollaborationPlugin
-                id={documentId}
-                // @ts-expect-error: WebsocketProvider is compatible at runtime but types don't match Lexical's ProviderFactory
-                providerFactory={providerFactory}
-                shouldBootstrap={false}
-                cursorsContainerRef={hiddenCursorsRef}
-              />
-              <MultiCursorPlugin userName={userName} />
+          <div className="flex gap-4 w-full items-start">
+            <div className="flex flex-col gap-4 flex-1 min-w-0">
+              <UserPresence />
+              <div className="max-w-2xl mx-auto w-full p-4 border rounded-lg shadow-sm bg-background min-h-50 relative">
+                <RichTextPlugin
+                  contentEditable={
+                    <ContentEditable
+                      className={`outline-none min-h-37.5 resize-none ${!canWrite ? "cursor-default" : ""}`}
+                    />
+                  }
+                  placeholder={
+                    canWrite ? (
+                      <div className="absolute top-4 left-4 text-gray-400 pointer-events-none">
+                        Type '/' for commands…
+                      </div>
+                    ) : null
+                  }
+                  ErrorBoundary={LexicalErrorBoundary}
+                />
+                {canWrite && <SlashMenuPlugin />}
+                <ListPlugin />
+                <HistoryPlugin />
+                <OnChangePlugin onChange={() => {}} />
+                <div ref={hiddenCursorsRef} style={{ display: "none" }} />
+                <CollaborationPlugin
+                  id={documentId}
+                  // @ts-expect-error: WebsocketProvider is compatible at runtime but types don't match Lexical's ProviderFactory
+                  providerFactory={providerFactory}
+                  shouldBootstrap={false}
+                  cursorsContainerRef={hiddenCursorsRef}
+                />
+                <MultiCursorPlugin userName={userName} />
+              </div>
             </div>
+            {showSnapshots && (
+              <div className="w-72 shrink-0 border rounded-lg bg-background overflow-hidden flex flex-col min-h-100">
+                <SnapshotPanel documentId={documentId} canWrite={canWrite} />
+              </div>
+            )}
           </div>
         </LexicalComposer>
       </LexicalCollaboration>
