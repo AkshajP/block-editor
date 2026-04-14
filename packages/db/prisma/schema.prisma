@@ -22,6 +22,8 @@ model User {
   directPermissions    UserDirectPermission[]
   blocksIssued         Blocklist[]           @relation("BlocklistIssuedBy")
   blocksReceived       Blocklist[]           @relation("BlocklistUser")
+  documentBlocksIssued DocumentBlocklist[]   @relation("DocumentBlocklistIssuedBy")
+  documentBlocksReceived DocumentBlocklist[] @relation("DocumentBlocklistUser")
   invitesSent          Invite[]              @relation("InvitesSentBy")
   documentsCreated     Document[]            @relation("DocumentCreatedBy")
   documentMembers      DocumentMember[]
@@ -199,6 +201,7 @@ model Document {
   workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy User             @relation("DocumentCreatedBy", fields: [createdById], references: [id])
   members   DocumentMember[]
+  blocklist DocumentBlocklist[]
   snapshots Snapshot[]
   variables DocumentVariable[]
 
@@ -218,6 +221,21 @@ model DocumentMember {
 
   @@unique([documentId, userId])
   @@map("document_members")
+}
+
+model DocumentBlocklist {
+  id            String   @id @default(cuid())
+  documentId    String   @map("document_id")
+  blockedUserId String   @map("blocked_user_id")
+  blockedById   String   @map("blocked_by")
+  blockedAt     DateTime @default(now()) @map("blocked_at")
+
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  blockedUser User     @relation("DocumentBlocklistUser", fields: [blockedUserId], references: [id], onDelete: Cascade)
+  blockedBy   User     @relation("DocumentBlocklistIssuedBy", fields: [blockedById], references: [id])
+
+  @@unique([documentId, blockedUserId])
+  @@map("document_blocklist")
 }
 
 model Snapshot {

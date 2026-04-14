@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import { Archive, FileText, Globe, Lock, Pencil, Star } from "lucide-react";
 
 import Editor from "./Editor";
+import VisibilityModal from "./VisibilityModal";
 
 type DocumentStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
 
 interface Props {
   documentId: string;
+  workspaceId: string;
   title: string;
   initialStatus: DocumentStatus;
   initialIsPublic: boolean;
@@ -17,6 +19,7 @@ interface Props {
   canRename: boolean;
   canPublish: boolean;
   canChangeVisibility: boolean;
+  canShare: boolean;
   userName: string;
 }
 
@@ -34,6 +37,7 @@ const STATUS_ICONS: Record<DocumentStatus, React.ReactNode> = {
 
 export default function EditorPage({
   documentId,
+  workspaceId,
   title: initialTitle,
   initialStatus,
   initialIsPublic,
@@ -41,10 +45,12 @@ export default function EditorPage({
   canRename,
   canPublish,
   canChangeVisibility,
+  canShare,
   userName,
 }: Props) {
   const router = useRouter();
   const [showSnapshots, setShowSnapshots] = useState(false);
+  const [showVisibility, setShowVisibility] = useState(false);
   const [title, setTitle] = useState(initialTitle);
   const [status, setStatus] = useState<DocumentStatus>(initialStatus);
   const [isPublic, setIsPublic] = useState(initialIsPublic);
@@ -93,21 +99,6 @@ export default function EditorPage({
         body: JSON.stringify({ status: nextStatus }),
       });
       if (res.ok) setStatus(nextStatus);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function toggleVisibility() {
-    const next = !isPublic;
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/documents/${documentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isPublic: next }),
-      });
-      if (res.ok) setIsPublic(next);
     } finally {
       setSaving(false);
     }
@@ -182,16 +173,14 @@ export default function EditorPage({
           </span>
         )}
 
-        {/* Visibility toggle — only shown when published and user can publish */}
-        {canChangeVisibility && isPublished && (
+        {/* Visibility / sharing modal trigger */}
+        {(canChangeVisibility || canShare) && (
           <button
-            onClick={toggleVisibility}
-            disabled={saving}
-            title={isPublic ? "Make private (invite-only)" : "Make public to workspace"}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border transition-colors disabled:opacity-50 bg-white text-slate-600 border-slate-200 hover:border-slate-400"
+            onClick={() => setShowVisibility(true)}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border transition-colors bg-white text-slate-600 border-slate-200 hover:border-slate-400"
           >
-            {isPublic ? <Lock size={12} /> : <Globe size={12} />}
-            {isPublic ? "Make private" : "Make public"}
+            {isPublic ? <Globe size={12} /> : <Lock size={12} />}
+            Visibility
           </button>
         )}
 
@@ -229,6 +218,16 @@ export default function EditorPage({
           showSnapshots={showSnapshots}
         />
       </div>
+
+      <VisibilityModal
+        open={showVisibility}
+        onOpenChange={setShowVisibility}
+        documentId={documentId}
+        workspaceId={workspaceId}
+        status={status}
+        isPublic={isPublic}
+        onIsPublicChange={setIsPublic}
+      />
     </main>
   );
 }

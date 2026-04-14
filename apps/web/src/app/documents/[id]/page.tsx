@@ -30,10 +30,12 @@ export default async function DocumentPage({
   const canRename = DocumentPolicy.canRename(user, permissions, document);
   const canPublish = DocumentPolicy.canPublish(user, permissions, document);
   const canChangeVisibility = DocumentPolicy.canChangeVisibility(user, permissions, document);
+  const canShare = DocumentPolicy.canShare(user, permissions, document);
 
   return (
     <EditorPage
       documentId={id}
+      workspaceId={document.workspaceId}
       title={document.title}
       initialStatus={document.status}
       initialIsPublic={document.isPublic}
@@ -41,6 +43,7 @@ export default async function DocumentPage({
       canRename={canRename}
       canPublish={canPublish}
       canChangeVisibility={canChangeVisibility}
+      canShare={canShare}
       userName={user.displayName}
     />
   );

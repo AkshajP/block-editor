@@ -70,10 +70,11 @@ const ALL_PERMISSIONS = Object.values(PERMISSIONS) as string[];
  * Resolves the effective permission set for a user on a specific document.
  *
  * Resolution order:
- *  1. Owner (document.createdById)  → all permissions
- *  2. Workspace Admin (manage_all)  → all permissions
- *  3. Published document            → workspace members get document.read
- *  4. Explicit DocumentMember       → permissions from their document-level role
+ *  1. Owner (document.createdById)  → all permissions (immune to blocklist)
+ *  2. Workspace Admin (manage_all)  → all permissions (immune to blocklist)
+ *  3. Document blocklist            → no permissions (overrides explicit membership)
+ *  4. Published + public document   → workspace members get document.read
+ *  5. Explicit DocumentMember       → permissions from their document-level role
  */
 export async function getDocumentPermissions(
   userId: string,
@@ -92,9 +93,15 @@ export async function getDocumentPermissions(
   const wsPerms = await getUserWorkspacePermissions(userId, document.workspaceId);
   if (wsPerms.includes(PERMISSIONS.DOCUMENT_MANAGE_ALL)) return ALL_PERMISSIONS;
 
+  // 3. Blocklist check — applies regardless of explicit membership.
+  const blocked = await prisma.documentBlocklist.findUnique({
+    where: { documentId_blockedUserId: { documentId: document.id, blockedUserId: userId } },
+  });
+  if (blocked) return [];
+
   const permissionSet = new Set<string>();
 
-  // 3. Published + public document → all workspace members can read.
+  // 4. Published + public document → all workspace members can read.
   if (document.status === "PUBLISHED" && document.isPublic) {
     const member = await prisma.workspaceMember.findUnique({
       where: {
@@ -104,7 +111,7 @@ export async function getDocumentPermissions(
     if (member?.isActive) permissionSet.add(PERMISSIONS.DOCUMENT_READ);
   }
 
-  // 4. Explicit DocumentMember → apply their document-level role's permissions.
+  // 5. Explicit DocumentMember → apply their document-level role's permissions.
   const docMember = await prisma.documentMember.findUnique({
     where: { documentId_userId: { documentId: document.id, userId } },
     include: {

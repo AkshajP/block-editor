@@ -31,8 +31,16 @@ export async function GET() {
     where: {
       OR: [
         { createdById: user.id },
-        { members: { some: { userId: user.id } } },
-        { workspaceId: { in: workspaceIds }, status: "PUBLISHED", isPublic: true },
+        {
+          members: { some: { userId: user.id } },
+          blocklist: { none: { blockedUserId: user.id } },
+        },
+        {
+          workspaceId: { in: workspaceIds },
+          status: "PUBLISHED",
+          isPublic: true,
+          blocklist: { none: { blockedUserId: user.id } },
+        },
       ],
     },
     include: { createdBy: { select: { displayName: true } } },
