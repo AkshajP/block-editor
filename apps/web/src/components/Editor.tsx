@@ -17,10 +17,18 @@ import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
 
 import { getWebSocketUrl } from "@/lib/collaboration";
+import { EquationNode } from "@/components/nodes/EquationNode";
+import { LayoutContainerNode } from "@/components/nodes/LayoutContainerNode";
+import { LayoutItemNode } from "@/components/nodes/LayoutItemNode";
 
 import { AwarenessProvider } from "./AwarenessContext";
+import DraggableBlockPlugin from "./plugins/DraggableBlockPlugin";
+import EquationsPlugin from "./plugins/EquationsPlugin";
+import LayoutPlugin from "./plugins/LayoutPlugin";
 import MultiCursorPlugin from "./plugins/MultiCursorPlugin";
+import { PageLayoutPanel, PageLayoutPlugin, PageLayoutProvider, PageLayoutToolbar } from "./plugins/PageLayoutPlugin";
 import SlashMenuPlugin from "./plugins/SlashMenuPlugin";
+import TableOfContentsPlugin from "./plugins/TableOfContentsPlugin";
 import SnapshotPanel from "./SnapshotPanel";
 import UserPresence from "./UserPresence";
 
@@ -106,7 +114,7 @@ function EditorInner({ documentId, canWrite, userName, wsToken, showSnapshots }:
     // CollaborationPlugin can initialize the content.
     editorState: null,
     namespace: "MyEditor",
-    nodes: [HeadingNode, ListNode, ListItemNode],
+    nodes: [HeadingNode, ListNode, ListItemNode, EquationNode, LayoutContainerNode, LayoutItemNode],
     theme,
     editable: canWrite,
     onError: (error: Error) => console.error(error),
@@ -147,48 +155,68 @@ function EditorInner({ documentId, canWrite, userName, wsToken, showSnapshots }:
   return (
     <AwarenessProvider awareness={currentAwareness}>
       <LexicalCollaboration>
-        <LexicalComposer initialConfig={initialConfig}>
-          <div className="flex gap-4 w-full items-start">
-            <div className="flex flex-col gap-4 flex-1 min-w-0">
-              <UserPresence />
-              <div className="max-w-2xl mx-auto w-full p-4 border rounded-lg shadow-sm bg-background min-h-50 relative">
-                <RichTextPlugin
-                  contentEditable={
-                    <ContentEditable
-                      className={`outline-none min-h-37.5 resize-none ${!canWrite ? "cursor-default" : ""}`}
-                    />
-                  }
-                  placeholder={
-                    canWrite ? (
-                      <div className="absolute top-4 left-4 text-gray-400 pointer-events-none">
-                        Type '/' for commands…
-                      </div>
-                    ) : null
-                  }
-                  ErrorBoundary={LexicalErrorBoundary}
-                />
-                {canWrite && <SlashMenuPlugin />}
-                <ListPlugin />
-                <HistoryPlugin />
-                <OnChangePlugin onChange={() => {}} />
-                <div ref={hiddenCursorsRef} style={{ display: "none" }} />
-                <CollaborationPlugin
-                  id={documentId}
-                  // @ts-expect-error: WebsocketProvider is compatible at runtime but types don't match Lexical's ProviderFactory
-                  providerFactory={providerFactory}
-                  shouldBootstrap={false}
-                  cursorsContainerRef={hiddenCursorsRef}
-                />
-                <MultiCursorPlugin userName={userName} />
+        <PageLayoutProvider>
+          <LexicalComposer initialConfig={initialConfig}>
+            <div className="flex gap-4 w-full items-start">
+              {/* Table of Contents sidebar */}
+              <div className="shrink-0 border rounded-lg bg-background overflow-hidden hidden lg:block">
+                <TableOfContentsPlugin />
               </div>
+
+              {/* Editor column */}
+              <div className="flex flex-col gap-4 flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <UserPresence />
+                  <PageLayoutToolbar />
+                </div>
+
+                <div className="max-w-2xl mx-auto w-full p-4 border rounded-lg shadow-sm bg-background min-h-50 relative">
+                  <RichTextPlugin
+                    contentEditable={
+                      <ContentEditable
+                        className={`outline-none min-h-37.5 resize-none ${!canWrite ? "cursor-default" : ""}`}
+                      />
+                    }
+                    placeholder={
+                      canWrite ? (
+                        <div className="absolute top-4 left-4 text-gray-400 pointer-events-none">
+                          Type '/' for commands…
+                        </div>
+                      ) : null
+                    }
+                    ErrorBoundary={LexicalErrorBoundary}
+                  />
+                  {canWrite && <SlashMenuPlugin />}
+                  {canWrite && <DraggableBlockPlugin />}
+                  <EquationsPlugin />
+                  <LayoutPlugin />
+                  <PageLayoutPlugin />
+                  <ListPlugin />
+                  <HistoryPlugin />
+                  <OnChangePlugin onChange={() => {}} />
+                  <div ref={hiddenCursorsRef} style={{ display: "none" }} />
+                  <CollaborationPlugin
+                    id={documentId}
+                    // @ts-expect-error: WebsocketProvider is compatible at runtime but types don't match Lexical's ProviderFactory
+                    providerFactory={providerFactory}
+                    shouldBootstrap={false}
+                    cursorsContainerRef={hiddenCursorsRef}
+                  />
+                  <MultiCursorPlugin userName={userName} />
+                </div>
+              </div>
+
+              {/* Page layout preview panel — right side */}
+              <PageLayoutPanel />
+
+              {showSnapshots && (
+                <div className="w-72 shrink-0 border rounded-lg bg-background overflow-hidden flex flex-col min-h-100">
+                  <SnapshotPanel documentId={documentId} canWrite={canWrite} />
+                </div>
+              )}
             </div>
-            {showSnapshots && (
-              <div className="w-72 shrink-0 border rounded-lg bg-background overflow-hidden flex flex-col min-h-100">
-                <SnapshotPanel documentId={documentId} canWrite={canWrite} />
-              </div>
-            )}
-          </div>
-        </LexicalComposer>
+          </LexicalComposer>
+        </PageLayoutProvider>
       </LexicalCollaboration>
     </AwarenessProvider>
   );
