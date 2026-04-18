@@ -1,11 +1,16 @@
 import { auth } from "@block-editor/auth";
-import { DocumentPolicy, getDocumentPermissions } from "@block-editor/authz";
+import {
+  DocumentPolicy,
+  getDocumentPermissions,
+  getUserWorkspacePermissions,
+  TemplatePolicy,
+} from "@block-editor/authz";
 import { prisma } from "@block-editor/db";
 import { NextResponse } from "next/server";
 
 export async function PATCH(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
 
@@ -47,12 +52,54 @@ export async function PATCH(
 
     if ("isPublic" in body) {
       if (typeof body.isPublic !== "boolean")
-        return NextResponse.json({ error: "isPublic must be a boolean" }, { status: 400 });
+        return NextResponse.json(
+          { error: "isPublic must be a boolean" },
+          { status: 400 },
+        );
       data.isPublic = body.isPublic;
     }
 
     const updated = await prisma.document.update({ where: { id }, data });
-    return NextResponse.json({ id: updated.id, status: updated.status, isPublic: updated.isPublic });
+    return NextResponse.json({
+      id: updated.id,
+      status: updated.status,
+      isPublic: updated.isPublic,
+    });
+  }
+
+  // Apply template to document
+  if ("templateId" in body) {
+    if (!DocumentPolicy.canWrite(permissions, document))
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+
+    const newTemplateId = body.templateId as string | null;
+
+    if (newTemplateId !== null) {
+      const template = await prisma.template.findUnique({
+        where: { id: newTemplateId },
+      });
+      if (!template || template.workspaceId !== document.workspaceId)
+        return NextResponse.json(
+          { error: "template not found" },
+          { status: 404 },
+        );
+
+      const wsPerms = await getUserWorkspacePermissions(
+        user.id,
+        document.workspaceId,
+      );
+      if (!TemplatePolicy.canApply(wsPerms))
+        return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+
+    const updated = await prisma.document.update({
+      where: { id },
+      data: { templateId: newTemplateId },
+    });
+    return NextResponse.json({
+      id: updated.id,
+      templateId: updated.templateId,
+    });
   }
 
   const title = typeof body.title === "string" ? body.title.trim() : null;

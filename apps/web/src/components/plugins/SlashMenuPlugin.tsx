@@ -16,6 +16,7 @@ import {
   $createParagraphNode,
   $getSelection,
   $isRangeSelection,
+  type LexicalEditor,
 } from "lexical";
 import {
   Heading1,
@@ -30,7 +31,80 @@ import {
 } from "lucide-react";
 import * as React from "react";
 
-// 1. Define the Menu Option Class
+import { useTemplate } from "@block-editor/template-engine";
+import type { ResolvedConstruct } from "@block-editor/template-engine";
+
+// ─── Insert handlers ──────────────────────────────────────────────────────────
+// Maps built-in construct IDs to their Lexical editor insert actions.
+// Add an entry here when a new construct type (ImageNode, etc.) is supported.
+
+type InsertFn = (editor: LexicalEditor) => void;
+
+const INSERT_HANDLERS: Record<string, InsertFn> = {
+  paragraph: (editor) =>
+    editor.update(() => {
+      const sel = $getSelection();
+      if ($isRangeSelection(sel)) $setBlocksType(sel, () => $createParagraphNode());
+    }),
+  "heading-1": (editor) =>
+    editor.update(() => {
+      const sel = $getSelection();
+      if ($isRangeSelection(sel)) $setBlocksType(sel, () => $createHeadingNode("h1"));
+    }),
+  "heading-2": (editor) =>
+    editor.update(() => {
+      const sel = $getSelection();
+      if ($isRangeSelection(sel)) $setBlocksType(sel, () => $createHeadingNode("h2"));
+    }),
+  "heading-3": (editor) =>
+    editor.update(() => {
+      const sel = $getSelection();
+      if ($isRangeSelection(sel)) $setBlocksType(sel, () => $createHeadingNode("h3"));
+    }),
+  "heading-4": (editor) =>
+    editor.update(() => {
+      const sel = $getSelection();
+      if ($isRangeSelection(sel)) $setBlocksType(sel, () => $createHeadingNode("h4"));
+    }),
+  "heading-5": (editor) =>
+    editor.update(() => {
+      const sel = $getSelection();
+      if ($isRangeSelection(sel)) $setBlocksType(sel, () => $createHeadingNode("h5"));
+    }),
+  "heading-6": (editor) =>
+    editor.update(() => {
+      const sel = $getSelection();
+      if ($isRangeSelection(sel)) $setBlocksType(sel, () => $createHeadingNode("h6"));
+    }),
+  "numbered-list": (editor) =>
+    editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined),
+  "bullet-list": (editor) =>
+    editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined),
+};
+
+// ─── Icon map ─────────────────────────────────────────────────────────────────
+// Maps lucide icon names (stored on ConstructDefinition) → React elements.
+
+const ICON_MAP: Record<string, React.ReactElement> = {
+  Type: <Type className="mr-2 h-4 w-4" />,
+  Heading1: <Heading1 className="mr-2 h-4 w-4" />,
+  Heading2: <Heading2 className="mr-2 h-4 w-4" />,
+  Heading3: <Heading3 className="mr-2 h-4 w-4" />,
+  Heading4: <Heading4 className="mr-2 h-4 w-4" />,
+  Heading5: <Heading5 className="mr-2 h-4 w-4" />,
+  Heading6: <Heading6 className="mr-2 h-4 w-4" />,
+  List: <List className="mr-2 h-4 w-4" />,
+  ListOrdered: <ListOrdered className="mr-2 h-4 w-4" />,
+};
+
+const DEFAULT_ICON = <Type className="mr-2 h-4 w-4" />;
+
+function iconForConstruct(c: ResolvedConstruct): React.ReactElement {
+  return c.icon ? (ICON_MAP[c.icon] ?? DEFAULT_ICON) : DEFAULT_ICON;
+}
+
+// ─── Menu option ──────────────────────────────────────────────────────────────
+
 class SlashMenuItem extends MenuOption {
   title: string;
   icon: React.ReactElement;
@@ -38,10 +112,7 @@ class SlashMenuItem extends MenuOption {
 
   constructor(
     title: string,
-    options: {
-      icon: React.ReactElement;
-      onSelect: (queryString: string) => void;
-    },
+    options: { icon: React.ReactElement; onSelect: (queryString: string) => void },
   ) {
     super(title);
     this.title = title;
@@ -50,104 +121,23 @@ class SlashMenuItem extends MenuOption {
   }
 }
 
+// ─── Plugin ───────────────────────────────────────────────────────────────────
+
 export default function SlashMenuPlugin() {
   const [editor] = useLexicalComposerContext();
+  const { constructs } = useTemplate();
 
-  // 2. Define our Available Actions
-  const options = React.useMemo(
-    () => [
-      new SlashMenuItem("Heading 1", {
-        icon: <Heading1 className="mr-2 h-4 w-4" />,
-        onSelect: () => {
-          editor.update(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-              $setBlocksType(selection, () => $createHeadingNode("h1"));
-            }
-          });
-        },
-      }),
-      new SlashMenuItem("Heading 2", {
-        icon: <Heading2 className="mr-2 h-4 w-4" />,
-        onSelect: () => {
-          editor.update(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-              $setBlocksType(selection, () => $createHeadingNode("h2"));
-            }
-          });
-        },
-      }),
-      new SlashMenuItem("Heading 3", {
-        icon: <Heading3 className="mr-2 h-4 w-4" />,
-        onSelect: () => {
-          editor.update(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-              $setBlocksType(selection, () => $createHeadingNode("h3"));
-            }
-          });
-        },
-      }),
-      new SlashMenuItem("Heading 4", {
-        icon: <Heading4 className="mr-2 h-4 w-4" />,
-        onSelect: () => {
-          editor.update(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-              $setBlocksType(selection, () => $createHeadingNode("h4"));
-            }
-          });
-        },
-      }),
-      new SlashMenuItem("Heading 5", {
-        icon: <Heading5 className="mr-2 h-4 w-4" />,
-        onSelect: () => {
-          editor.update(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-              $setBlocksType(selection, () => $createHeadingNode("h5"));
-            }
-          });
-        },
-      }),
-      new SlashMenuItem("Heading 6", {
-        icon: <Heading6 className="mr-2 h-4 w-4" />,
-        onSelect: () => {
-          editor.update(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-              $setBlocksType(selection, () => $createHeadingNode("h6"));
-            }
-          });
-        },
-      }),
-      new SlashMenuItem("Text", {
-        icon: <Type className="mr-2 h-4 w-4" />,
-        onSelect: () => {
-          editor.update(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-              $setBlocksType(selection, () => $createParagraphNode());
-            }
-          });
-        },
-      }),
-      new SlashMenuItem("Numbered List", {
-        icon: <ListOrdered className="mr-2 h-4 w-4" />,
-        onSelect: () => {
-          editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
-        },
-      }),
-      new SlashMenuItem("Bullet List", {
-        icon: <List className="mr-2 h-4 w-4" />,
-        onSelect: () => {
-          editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
-        },
-      }),
-    ],
-    [editor],
-  );
+  const options = React.useMemo(() => {
+    return constructs
+      .filter((c) => c.id in INSERT_HANDLERS) // skip constructs with no registered handler yet
+      .map(
+        (c) =>
+          new SlashMenuItem(c.label, {
+            icon: iconForConstruct(c),
+            onSelect: () => INSERT_HANDLERS[c.id](editor),
+          }),
+      );
+  }, [constructs, editor]);
 
   const checkForTriggerMatch = useBasicTypeaheadTriggerMatch("/", {
     minLength: 0,
@@ -156,29 +146,21 @@ export default function SlashMenuPlugin() {
   return (
     <LexicalTypeaheadMenuPlugin<SlashMenuItem>
       onQueryChange={() => {}}
-      onSelectOption={(option, nodeToRemove, closeMenu) => {
+      onSelectOption={(option, _nodeToRemove, closeMenu) => {
         editor.update(() => {
-          // Remove the "/" trigger character from the editor
           const selection = $getSelection();
           if ($isRangeSelection(selection)) {
-            selection.deleteCharacter(true); // deletes the "/"
+            selection.deleteCharacter(true); // remove the "/" trigger character
           }
-          // Apply the new block type
           option.onSelect("");
         });
-        // Close the menu after editor update completes
         closeMenu();
       }}
       triggerFn={checkForTriggerMatch}
       options={options}
-      menuRenderFn={(
-        anchorElementRef,
-        { selectedIndex, selectOptionAndCleanUp, options },
-      ) => {
+      menuRenderFn={(anchorElementRef, { selectedIndex, selectOptionAndCleanUp, options }) => {
         if (!anchorElementRef.current || options.length === 0) return null;
 
-        // Get the position of the anchor element (cursor position)
-        // TODO: Make this menu stick near the cursor when scrolled instead of fixed wrt page
         const rect = anchorElementRef.current.getBoundingClientRect();
 
         return (

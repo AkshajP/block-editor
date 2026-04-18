@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Archive, FileText, Globe, Lock, Pencil, Star } from "lucide-react";
 
+import type { TemplateSchema } from "@block-editor/template-schema";
+
 import Editor from "./Editor";
 import VisibilityModal from "./VisibilityModal";
 
@@ -15,6 +17,7 @@ interface Props {
   title: string;
   initialStatus: DocumentStatus;
   initialIsPublic: boolean;
+  templateSchema: TemplateSchema | null;
   canWrite: boolean;
   canRename: boolean;
   canPublish: boolean;
@@ -41,6 +44,7 @@ export default function EditorPage({
   title: initialTitle,
   initialStatus,
   initialIsPublic,
+  templateSchema,
   canWrite,
   canRename,
   canPublish,
@@ -216,6 +220,7 @@ export default function EditorPage({
           canWrite={canWrite}
           userName={userName}
           showSnapshots={showSnapshots}
+          templateSchema={templateSchema}
         />
       </div>
 

@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -190,15 +191,56 @@ async function main() {
   });
   console.log(`  "admin@dev.local" → Admin (workspace role)`);
 
+  console.log("Seeding default system template...");
+  const defaultTemplateSchema = {
+    version: 1,
+    page: { width: 595, height: 842, margins: { top: 72, right: 72, bottom: 72, left: 72 } },
+    constructs: [
+      { id: "paragraph" },
+      { id: "heading-1" },
+      { id: "heading-2" },
+      { id: "heading-3" },
+      { id: "heading-4" },
+      { id: "heading-5" },
+      { id: "heading-6" },
+      { id: "numbered-list" },
+      { id: "bullet-list" },
+    ],
+    defaultConstructId: "paragraph",
+  };
+
+  // Find the existing system template by name+workspace, or create it.
+  // Using findFirst + upsert-by-id because templates have no unique slug constraint.
+  const existingSystemTpl = await prisma.template.findFirst({
+    where: { workspaceId: devWorkspace.id, isSystem: true, name: "Default" },
+  });
+  const devTemplate = existingSystemTpl
+    ? await prisma.template.update({
+        where: { id: existingSystemTpl.id },
+        data: { schema: defaultTemplateSchema },
+      })
+    : await prisma.template.create({
+        data: {
+          name: "Default",
+          description: "Built-in template with standard paragraph and heading constructs.",
+          schema: defaultTemplateSchema,
+          workspaceId: devWorkspace.id,
+          createdById: adminUser.id,
+          isSystem: true,
+        },
+      });
+  console.log(`  Template "${devTemplate.name}" (id: ${devTemplate.id})`);
+
   console.log("Seeding dev document...");
   const devDoc = await prisma.document.upsert({
     where: { id: "dev-document-id" },
-    update: { title: "Dev Document" },
+    update: { title: "Dev Document", templateId: devTemplate.id },
     create: {
       id: "dev-document-id",
       title: "Dev Document",
       workspaceId: devWorkspace.id,
       createdById: adminUser.id,
+      templateId: devTemplate.id,
     },
   });
   console.log(`  Document "${devDoc.title}" (id: ${devDoc.id})`);

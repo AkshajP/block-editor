@@ -195,11 +195,13 @@ model Document {
   createdById String         @map("created_by")
   status      DocumentStatus @default(DRAFT)
   isPublic    Boolean        @default(true) @map("is_public")
+  templateId  String?        @map("template_id")
   createdAt   DateTime       @default(now()) @map("created_at")
   updatedAt   DateTime       @updatedAt @map("updated_at")
 
   workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy User             @relation("DocumentCreatedBy", fields: [createdById], references: [id])
+  template  Template?        @relation(fields: [templateId], references: [id])
   members   DocumentMember[]
   blocklist DocumentBlocklist[]
   snapshots Snapshot[]
@@ -285,6 +287,8 @@ model Template {
   workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy User               @relation("TemplateCreatedBy", fields: [createdById], references: [id])
   variables TemplateVariable[]
+  // Prisma requires this backrelation for the FK on Document; never exposed in APIs
+  documents Document[]
 
   @@map("templates")
 }
