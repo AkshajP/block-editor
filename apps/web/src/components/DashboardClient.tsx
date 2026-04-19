@@ -24,7 +24,7 @@ export default function DashboardClient({
   documents: initialDocs,
 }: Props) {
   const router = useRouter();
-  const [documents, setDocuments] = useState(initialDocs);
+  const [documents] = useState(initialDocs);
   const [creating, setCreating] = useState(false);
 
   async function createDocument() {
@@ -58,8 +58,18 @@ export default function DashboardClient({
       </header>
 
       <div className="max-w-5xl mx-auto px-6 py-10">
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-bold text-slate-900">My Documents</h2>
+        <div className="flex items-center justify-between border-b border-slate-200 mb-8">
+          <div className="flex items-center gap-1">
+            <span className="px-1 py-2 mr-3 text-sm border-b-2 border-slate-900 text-slate-900 font-medium">
+              My Documents
+            </span>
+            <button
+              onClick={() => router.push("/templates")}
+              className="px-1 py-2 mr-3 text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition-colors"
+            >
+              Templates
+            </button>
+          </div>
           <button
             onClick={createDocument}
             disabled={creating}
