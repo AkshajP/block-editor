@@ -24,6 +24,30 @@ export interface ConstructPDFConfig {
   };
 }
 
+// ─── Construct parts (composition of a custom construct) ─────────────────────
+
+export type ConstructPartType = "static_text" | "computed_var" | "user_input" | "image";
+
+export interface ConstructPartStyle {
+  bold?: boolean;
+  italic?: boolean;
+  fontSize?: number;
+  alignment?: TextAlignment;
+  color?: string;
+}
+
+export interface ConstructPart {
+  id: string;
+  type: ConstructPartType;
+  /** static_text: the literal string rendered. */
+  content?: string;
+  /** computed_var: name of the VariableDefinition to substitute. */
+  variableName?: string;
+  /** user_input: hint shown in the editor placeholder. */
+  placeholder?: string;
+  style?: ConstructPartStyle;
+}
+
 // ─── Construct definition ────────────────────────────────────────────────────
 
 export type ConstructCategory = "Text" | "Media" | "Layout" | "Structure";
@@ -48,6 +72,24 @@ export interface ConstructDefinition {
   composite?: boolean;
 
   pdf: ConstructPDFConfig;
+
+  /**
+   * Ordered list of parts that make up this construct's rendered output.
+   * Only meaningful for custom (non-built-in) constructs.
+   */
+  parts?: ConstructPart[];
+
+  /**
+   * The computed variable (by name) that this construct increments when
+   * it is inserted into a document.
+   */
+  counterVariable?: string;
+
+  /** Slash command, e.g. "/chapter". */
+  slashCommand?: string;
+
+  /** Additional aliases, e.g. ["/ch", "/chap"]. */
+  aliases?: string[];
 }
 
 // ─── Template schema (stored as JSONB in the `templates.schema` column) ──────
@@ -75,17 +117,29 @@ export interface HeaderFooterConfig {
 }
 
 export type VariableType = "STATIC" | "COMPUTED";
-export type ComputedFn = "date" | "page_number" | "total_pages";
+export type ComputedFn =
+  | "date"
+  | "page_number"
+  | "total_pages"
+  /** Counts occurrences of `counterConstruct` in the document. */
+  | "counter"
+  /** Counts occurrences of `counterConstruct`, resetting at each `counterResetOn`. */
+  | "counter_reset"
+  /** Evaluates `formula` by substituting `{var_name}` references. */
+  | "derived";
 
 export interface VariableDefinition {
-  /** Identifier used in the document, e.g. "institute_name". */
   name: string;
-  /** Human-readable label shown in the variables panel. */
   label: string;
   type: VariableType;
-  /** Only for COMPUTED variables. */
   computedFn?: ComputedFn;
   defaultValue?: string;
+  /** counter / counter_reset: construct id whose insertions drive this counter. */
+  counterConstruct?: string;
+  /** counter_reset: construct id whose insertion resets the count to 0. */
+  counterResetOn?: string;
+  /** derived: template string, e.g. "{chapter_number}.{fig_number}" */
+  formula?: string;
 }
 
 /**
@@ -103,11 +157,26 @@ export interface TemplateConstructRef {
   definition?: ConstructDefinition;
 }
 
+export type NumberingFormat = "arabic" | "roman" | "alpha";
+export type PageBorder = "none" | "thin" | "gold";
+
+export interface PageTypeConfig {
+  showHeader?: boolean;
+  showFooter?: boolean;
+  showPageNumber?: boolean;
+  numberingFormat?: NumberingFormat;
+  numberingStart?: number;
+  border?: PageBorder;
+  watermark?: boolean;
+}
+
 export interface TemplateSchema {
   version: 1;
   page: PageConfig;
   header?: HeaderFooterConfig;
   footer?: HeaderFooterConfig;
+  /** Per-page-type overrides. Keys are PageType strings ("cover", "content", etc.). */
+  pageTypeConfigs?: Record<string, PageTypeConfig>;
   /**
    * Ordered list of constructs available in this template.
    * The order determines the slash-menu ordering.

@@ -23,6 +23,7 @@ import type { TemplateSchema } from "@block-editor/template-schema";
 import { getWebSocketUrl } from "@/lib/collaboration";
 
 import { AwarenessProvider } from "./AwarenessContext";
+import { ConstructBadgeNode } from "./nodes/ConstructBadgeNode";
 import MultiCursorPlugin from "./plugins/MultiCursorPlugin";
 import SlashMenuPlugin from "./plugins/SlashMenuPlugin";
 import SnapshotPanel from "./SnapshotPanel";
@@ -40,7 +41,7 @@ const NODE_CLASS_MAP: Record<string, Klass<LexicalNode>> = {
 };
 
 // paragraph, text, root are always built-in — no registration needed.
-const ALWAYS_NODES: Klass<LexicalNode>[] = [];
+const ALWAYS_NODES: Klass<LexicalNode>[] = [ConstructBadgeNode];
 
 function getLexicalNodes(schema: TemplateSchema | null): Klass<LexicalNode>[] {
   if (!schema) {

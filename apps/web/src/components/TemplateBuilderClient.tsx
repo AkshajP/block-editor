@@ -3,6 +3,10 @@
 import type {
   TemplateSchema,
   VariableDefinition,
+  ConstructPart,
+  ConstructPartType,
+  ConstructCategory,
+  TemplateConstructRef,
 } from "@block-editor/template-schema";
 import {
   ArrowLeft,
@@ -866,39 +870,41 @@ function VariablesPane({
 function ComputedPane({
   schema,
   onAddComputed,
+  onDeleteComputed,
+  onSelectComputed,
+  selectedComputed,
 }: {
   schema: ExtendedSchema;
   onAddComputed: () => void;
+  onDeleteComputed: (name: string) => void;
+  onSelectComputed: (name: string) => void;
+  selectedComputed: string | null;
 }) {
-  const computedVars = (schema.variables ?? []).filter(
+  const customComputedVars = (schema.variables ?? []).filter(
     (v) => v.type === "COMPUTED",
   );
-  const allComputed = [
-    ...BUILT_IN_COMPUTED.map((c) => ({ ...c, builtin: true })),
-    ...computedVars
-      .filter(
-        (v) => !BUILT_IN_COMPUTED.find((b) => b.computedFn === v.computedFn),
-      )
-      .map((v) => ({
-        name: v.name,
-        label: v.label,
-        computedFn: v.computedFn as string,
-        desc: "",
-        format: "",
-        builtin: false,
-      })),
-  ];
+
+  const FN_BADGE: Record<string, string> = {
+    counter:       "bg-green-50 text-green-700 border-green-200",
+    counter_reset: "bg-amber-50 text-amber-700 border-amber-200",
+    derived:       "bg-blue-50 text-blue-700 border-blue-200",
+  };
+
+  function describeCustomVar(v: UIVariable): string {
+    if (v.computedFn === "counter") return `Counts /${v.counterConstruct ?? "?"}`;
+    if (v.computedFn === "counter_reset")
+      return `Counts /${v.counterConstruct ?? "?"}, resets at /${v.counterResetOn ?? "?"}`;
+    if (v.computedFn === "derived") return `= ${v.formula ?? ""}`;
+    return v.label;
+  }
 
   return (
     <div className="p-6 pb-20 max-w-[760px] mx-auto">
       <div className="flex items-end justify-between mb-4">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900 mb-0.5">
-            Computed variables
-          </h2>
+          <h2 className="text-lg font-semibold text-slate-900 mb-0.5">Computed variables</h2>
           <p className="text-[12.5px] text-slate-400">
-            Derived at render time by the template. Read-only for the document
-            author.
+            Derived at render time by the template. Read-only for the document author.
           </p>
         </div>
         <button
@@ -909,85 +915,97 @@ function ComputedPane({
         </button>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-          <span className="font-semibold text-sm text-slate-900">
-            {allComputed.length} computed values
-          </span>
-          <span className="text-[11.5px] text-slate-400 font-mono">
-            evaluated per page
-          </span>
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm mb-3">
+        <div className="px-4 py-3 border-b border-slate-200 text-[11px] uppercase tracking-wider font-semibold text-slate-400">
+          Built-in
         </div>
-        <div className="p-3">
-          {allComputed.map((c, i) => (
-            <div
-              key={c.name}
-              className="grid items-center gap-2.5 px-2 py-2 border-t border-slate-100 first:border-none"
-              style={{ gridTemplateColumns: "24px 1fr 60px" }}
-            >
-              <span className="w-5 h-5 rounded flex items-center justify-center bg-purple-50 text-purple-700 font-mono text-[11px] font-bold">
-                ƒ
-              </span>
-              <div>
-                <div className="font-mono text-purple-700 text-[12.5px]">{`{${c.name}}`}</div>
-                <div className="text-[11.5px] text-slate-500">
-                  {c.desc || c.label}
-                </div>
-                {c.format && (
-                  <div className="text-[11px] text-slate-400">{c.format}</div>
-                )}
-              </div>
-              <span className="font-mono text-[10.5px] text-slate-400 text-right">
-                {c.builtin ? "built-in" : "custom"}
-              </span>
+        {BUILT_IN_COMPUTED.map((c) => (
+          <div
+            key={c.name}
+            onClick={() => onSelectComputed(c.name)}
+            className={`flex items-center gap-2.5 px-3 py-2 border-t border-slate-100 first:border-none cursor-pointer transition-colors ${
+              selectedComputed === c.name ? "bg-purple-50" : "hover:bg-slate-50"
+            }`}
+          >
+            <span className="w-5 h-5 rounded flex items-center justify-center bg-purple-50 text-purple-700 font-mono text-[11px] font-bold shrink-0">ƒ</span>
+            <div className="flex-1 min-w-0">
+              <div className="font-mono text-purple-700 text-[12px]">{`{${c.name}}`}</div>
+              <div className="text-[11px] text-slate-400 truncate">{c.desc}</div>
             </div>
-          ))}
-        </div>
+            <span className="font-mono text-[10px] text-slate-300">built-in</span>
+          </div>
+        ))}
       </div>
+
+      {customComputedVars.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
+          <div className="px-4 py-3 border-b border-slate-200 text-[11px] uppercase tracking-wider font-semibold text-slate-400">
+            Custom · {customComputedVars.length}
+          </div>
+          {customComputedVars.map((v) => {
+            const uv = v as UIVariable;
+            return (
+              <div
+                key={v.name}
+                onClick={() => onSelectComputed(v.name)}
+                className={`flex items-center gap-2.5 px-3 py-2 border-t border-slate-100 first:border-none cursor-pointer transition-colors ${
+                  selectedComputed === v.name ? "bg-purple-50" : "hover:bg-slate-50"
+                }`}
+              >
+                <span className="w-5 h-5 rounded flex items-center justify-center bg-purple-50 text-purple-700 font-mono text-[11px] font-bold shrink-0">ƒ</span>
+                <div className="flex-1 min-w-0">
+                  <div className="font-mono text-purple-700 text-[12px]">{`{${v.name}}`}</div>
+                  <div className="text-[11px] text-slate-400 truncate">{describeCustomVar(uv)}</div>
+                </div>
+                <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded border ${FN_BADGE[v.computedFn ?? ""] ?? "bg-slate-50 text-slate-400 border-slate-200"}`}>
+                  {v.computedFn}
+                </span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDeleteComputed(v.name); }}
+                  className="p-0.5 text-slate-300 hover:text-red-500 transition-colors ml-1"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── CustomBlocksPane ─────────────────────────────────────────────────────────
 
+const PART_TYPE_BADGE: Record<ConstructPartType, string> = {
+  static_text:  "bg-slate-100 text-slate-500",
+  computed_var: "bg-purple-50 text-purple-700",
+  user_input:   "bg-blue-50 text-blue-700",
+  image:        "bg-orange-50 text-orange-700",
+};
+
 function CustomBlocksPane({
   schema,
   onNew,
+  onDelete,
+  onSelect,
+  selectedConstruct,
 }: {
   schema: ExtendedSchema;
   onNew: () => void;
+  onDelete: (id: string) => void;
+  onSelect: (id: string) => void;
+  selectedConstruct: string | null;
 }) {
-  const customConstructs = (schema.constructs ?? []).filter(
-    (c) => c.definition != null,
-  );
-
-  const SAMPLE_BLOCKS = [
-    {
-      name: "Captioned image",
-      slash: "/captioned-image · /cap",
-      desc: "Image + caption + auto figure number",
-      parts: ["image", "caption text", "{figure_n}"],
-      color: "purple",
-    },
-    {
-      name: "Metric card",
-      slash: "/metric · /m",
-      desc: "Big number + label + delta arrow",
-      parts: ["heading (number)", "label", "delta % colored"],
-      color: "teal",
-    },
-  ];
+  const customConstructs = (schema.constructs ?? []).filter((c) => c.definition != null);
 
   return (
     <div className="p-6 pb-20 max-w-[760px] mx-auto">
       <div className="flex items-end justify-between mb-4">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900 mb-0.5">
-            Custom blocks
-          </h2>
+          <h2 className="text-lg font-semibold text-slate-900 mb-0.5">Custom blocks</h2>
           <p className="text-[12.5px] text-slate-400">
-            Combine atomic editor blocks into reusable constructs. Surfaced as
-            slash commands.
+            Combine atomic editor blocks into reusable constructs. Surfaced as slash commands.
           </p>
         </div>
         <button
@@ -998,62 +1016,109 @@ function CustomBlocksPane({
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        {(customConstructs.length > 0 ? [] : SAMPLE_BLOCKS).map((b) => {
-          const chipColors: Record<string, string> = {
-            purple: "bg-purple-50 text-purple-700 border-purple-200",
-            teal: "bg-cyan-50 text-cyan-700 border-cyan-200",
-          };
-          return (
-            <div
-              key={b.name}
-              className="bg-white border border-slate-200 rounded-xl p-3.5"
-            >
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <div className="font-semibold text-[13.5px] text-slate-900">
-                    {b.name}
+      {customConstructs.length === 0 ? (
+        <div className="py-16 text-center text-slate-400 text-[12.5px]">
+          <Blocks size={28} className="mx-auto mb-3 opacity-25" />
+          <p className="mb-3">No custom blocks yet.</p>
+          <button
+            onClick={onNew}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-slate-300 rounded-md text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-colors text-[12px]"
+          >
+            <Plus size={12} /> Create your first custom block
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          {customConstructs.map((ref) => {
+            const def = ref.definition!;
+            const isSelected = selectedConstruct === ref.id;
+            const counterVar = def.counterVariable
+              ? (schema.variables ?? []).find((v) => v.name === def.counterVariable)
+              : undefined;
+
+            return (
+              <div
+                key={ref.id}
+                onClick={() => onSelect(ref.id)}
+                className={`bg-white border rounded-xl p-3.5 cursor-pointer transition-all ${
+                  isSelected ? "border-blue-400 ring-2 ring-blue-100" : "border-slate-200 hover:border-slate-300"
+                }`}
+              >
+                <div className="flex items-start justify-between mb-1.5">
+                  <div>
+                    <div className="font-semibold text-[13.5px] text-slate-900">{def.label}</div>
+                    <div className="font-mono text-[11px] text-slate-400">
+                      {def.slashCommand}
+                      {def.aliases?.length ? " · " + def.aliases.join(", ") : ""}
+                    </div>
                   </div>
-                  <div className="font-mono text-[11px] text-slate-400">
-                    {b.slash}
+                  <div className="flex items-center gap-1">
+                    {counterVar && (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9.5px] font-mono bg-purple-50 text-purple-700 border border-purple-200">
+                        ƒ {counterVar.name}
+                      </span>
+                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onDelete(ref.id); }}
+                      className="p-1 text-slate-300 hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 size={11} />
+                    </button>
                   </div>
                 </div>
-                <span
-                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${chipColors[b.color] ?? ""}`}
-                >
-                  preview
-                </span>
-              </div>
-              <p className="text-[12px] text-slate-400 mb-3">{b.desc}</p>
-              <div className="flex flex-col gap-1">
-                {b.parts.map((p, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-2 text-[11.5px] text-slate-400"
-                  >
-                    <span className="w-3.5 h-3.5 rounded flex items-center justify-center bg-slate-100 text-[9px] text-slate-400">
-                      {i + 1}
-                    </span>
-                    {p}
+                {(def.parts ?? []).length > 0 && (
+                  <div className="flex flex-col gap-1 mt-2">
+                    {(def.parts ?? []).map((p, i) => (
+                      <div key={p.id} className="flex items-center gap-1.5 text-[11.5px] text-slate-500">
+                        <span className="w-4 h-4 rounded flex items-center justify-center bg-slate-100 text-[9px] text-slate-400 shrink-0">
+                          {i + 1}
+                        </span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${PART_TYPE_BADGE[p.type]}`}>
+                          {p.type === "static_text" ? `"${p.content ?? ""}"` : p.type === "computed_var" ? `{${p.variableName}}` : p.type === "user_input" ? `[${p.placeholder ?? "user input"}]` : "image"}
+                        </span>
+                        {p.style?.bold && <span className="text-[10px] text-slate-400 font-bold">B</span>}
+                        {p.style?.italic && <span className="text-[10px] text-slate-400 italic">I</span>}
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
 
-        <button
-          onClick={onNew}
-          className="flex items-center justify-center gap-2 h-36 border border-dashed border-slate-300 rounded-xl text-slate-400 text-[12px] hover:border-blue-400 hover:text-blue-600 transition-colors"
-        >
-          <Plus size={14} /> New custom block
-        </button>
-      </div>
+          <button
+            onClick={onNew}
+            className="flex items-center justify-center gap-2 h-36 border border-dashed border-slate-300 rounded-xl text-slate-400 text-[12px] hover:border-blue-400 hover:text-blue-600 transition-colors"
+          >
+            <Plus size={14} /> New custom block
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── PageRulesPanel (right inspector) ────────────────────────────────────────
+
+const PAGE_TYPE_DEFAULTS: Record<
+  PageType,
+  {
+    showHeader: boolean;
+    showFooter: boolean;
+    showPageNumber: boolean;
+    numberingFormat: "arabic" | "roman" | "alpha";
+    numberingStart: number;
+    border: "none" | "thin" | "gold";
+    watermark: boolean;
+  }
+> = {
+  cover:       { showHeader: false, showFooter: false, showPageNumber: false, numberingFormat: "arabic", numberingStart: 1, border: "gold",  watermark: false },
+  toc:         { showHeader: true,  showFooter: true,  showPageNumber: true,  numberingFormat: "roman",  numberingStart: 1, border: "none",  watermark: false },
+  content:     { showHeader: true,  showFooter: true,  showPageNumber: true,  numberingFormat: "arabic", numberingStart: 1, border: "none",  watermark: false },
+  certificate: { showHeader: false, showFooter: false, showPageNumber: false, numberingFormat: "arabic", numberingStart: 1, border: "gold",  watermark: false },
+  unnumbered:  { showHeader: true,  showFooter: true,  showPageNumber: false, numberingFormat: "arabic", numberingStart: 1, border: "none",  watermark: false },
+  appendix:    { showHeader: true,  showFooter: true,  showPageNumber: true,  numberingFormat: "alpha",  numberingStart: 1, border: "none",  watermark: false },
+};
 
 function PageRulesPanel({
   schema,
@@ -1068,45 +1133,46 @@ function PageRulesPanel({
 }) {
   const landscape = isLandscape(schema);
   const detectedSize = detectPageSize(schema.page.width, schema.page.height);
-  const numbered =
-    pageType !== "cover" &&
-    pageType !== "certificate" &&
-    pageType !== "unnumbered";
-  const showHeader = pageType !== "cover" && pageType !== "certificate";
-  const showFooter = pageType !== "cover" && pageType !== "certificate";
+
+  // Read page-type config, falling back to defaults
+  const ptDefaults = PAGE_TYPE_DEFAULTS[pageType];
+  const ptConfig = schema.pageTypeConfigs?.[pageType] ?? {};
+  const showHeader     = ptConfig.showHeader     ?? ptDefaults.showHeader;
+  const showFooter     = ptConfig.showFooter     ?? ptDefaults.showFooter;
+  const showPageNumber = ptConfig.showPageNumber ?? ptDefaults.showPageNumber;
+  const numFormat      = ptConfig.numberingFormat ?? ptDefaults.numberingFormat;
+  const numStart       = ptConfig.numberingStart  ?? ptDefaults.numberingStart;
+  const border         = ptConfig.border          ?? ptDefaults.border;
+  const watermark      = ptConfig.watermark       ?? ptDefaults.watermark;
+
+  function setPTC(updates: Partial<typeof ptConfig>) {
+    onSchemaChange({
+      ...schema,
+      pageTypeConfigs: {
+        ...schema.pageTypeConfigs,
+        [pageType]: { ...ptConfig, ...updates },
+      },
+    });
+  }
 
   function setPageSize(size: string, orientation: "portrait" | "landscape") {
     const s = PAGE_SIZES[size] ?? PAGE_SIZES.A4;
-    const w =
-      orientation === "landscape" ? Math.max(s.w, s.h) : Math.min(s.w, s.h);
-    const h =
-      orientation === "landscape" ? Math.min(s.w, s.h) : Math.max(s.w, s.h);
-    onSchemaChange({
-      ...schema,
-      page: { ...schema.page, width: w, height: h },
-    });
+    const w = orientation === "landscape" ? Math.max(s.w, s.h) : Math.min(s.w, s.h);
+    const h = orientation === "landscape" ? Math.min(s.w, s.h) : Math.max(s.w, s.h);
+    onSchemaChange({ ...schema, page: { ...schema.page, width: w, height: h } });
   }
 
   function setMargin(side: "top" | "right" | "bottom" | "left", mm: string) {
     const pt = mmToPt(parseFloat(mm) || 0);
-    onSchemaChange({
-      ...schema,
-      page: { ...schema.page, margins: { ...schema.page.margins, [side]: pt } },
-    });
+    onSchemaChange({ ...schema, page: { ...schema.page, margins: { ...schema.page.margins, [side]: pt } } });
   }
 
   function setHeaderText(text: string) {
-    onSchemaChange({
-      ...schema,
-      header: { height: schema.header?.height ?? 30, text },
-    });
+    onSchemaChange({ ...schema, header: { height: schema.header?.height ?? 30, text } });
   }
 
   function setFooterText(text: string) {
-    onSchemaChange({
-      ...schema,
-      footer: { height: schema.footer?.height ?? 20, text },
-    });
+    onSchemaChange({ ...schema, footer: { height: schema.footer?.height ?? 20, text } });
   }
 
   return (
@@ -1114,158 +1180,145 @@ function PageRulesPanel({
       <div className="text-[11.5px] text-slate-400 mb-2">
         {master
           ? "Master rules apply to every page type unless overridden."
-          : `Overrides on /${pageType}. Inherited values are dimmed.`}
+          : `Overrides on /${pageType}. Blank = inherit from master.`}
       </div>
 
-      <SectionTitle>Page geometry</SectionTitle>
-      <Fld label="Size">
-        <FldSelect
-          value={detectedSize}
-          onChange={(v) => setPageSize(v, landscape ? "landscape" : "portrait")}
-          options={Object.keys(PAGE_SIZES).map((k) => ({ value: k, label: k }))}
-        />
-      </Fld>
-      <Fld label="Orientation">
-        <Seg
-          value={landscape ? "landscape" : "portrait"}
-          options={[
-            { value: "portrait", label: "Portrait" },
-            { value: "landscape", label: "Landscape" },
-          ]}
-          onChange={(v) =>
-            setPageSize(detectedSize, v as "portrait" | "landscape")
-          }
-        />
-      </Fld>
-      <div className="grid grid-cols-2 gap-2 mb-3">
-        <Fld label="Margin top">
-          <FldInput
-            type="number"
-            value={ptToMm(schema.page.margins.top)}
-            onChange={(v) => setMargin("top", v)}
-          />
-        </Fld>
-        <Fld label="Margin bottom">
-          <FldInput
-            type="number"
-            value={ptToMm(schema.page.margins.bottom)}
-            onChange={(v) => setMargin("bottom", v)}
-          />
-        </Fld>
-        <Fld label="Margin left">
-          <FldInput
-            type="number"
-            value={ptToMm(schema.page.margins.left)}
-            onChange={(v) => setMargin("left", v)}
-          />
-        </Fld>
-        <Fld label="Margin right">
-          <FldInput
-            type="number"
-            value={ptToMm(schema.page.margins.right)}
-            onChange={(v) => setMargin("right", v)}
-          />
-        </Fld>
-      </div>
+      {master && (
+        <>
+          <SectionTitle>Page geometry</SectionTitle>
+          <Fld label="Size">
+            <FldSelect
+              value={detectedSize}
+              onChange={(v) => setPageSize(v, landscape ? "landscape" : "portrait")}
+              options={Object.keys(PAGE_SIZES).map((k) => ({ value: k, label: k }))}
+            />
+          </Fld>
+          <Fld label="Orientation">
+            <Seg
+              value={landscape ? "landscape" : "portrait"}
+              options={[
+                { value: "portrait", label: "Portrait" },
+                { value: "landscape", label: "Landscape" },
+              ]}
+              onChange={(v) => setPageSize(detectedSize, v as "portrait" | "landscape")}
+            />
+          </Fld>
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <Fld label="Margin top">
+              <FldInput type="number" value={ptToMm(schema.page.margins.top)} onChange={(v) => setMargin("top", v)} />
+            </Fld>
+            <Fld label="Margin bottom">
+              <FldInput type="number" value={ptToMm(schema.page.margins.bottom)} onChange={(v) => setMargin("bottom", v)} />
+            </Fld>
+            <Fld label="Margin left">
+              <FldInput type="number" value={ptToMm(schema.page.margins.left)} onChange={(v) => setMargin("left", v)} />
+            </Fld>
+            <Fld label="Margin right">
+              <FldInput type="number" value={ptToMm(schema.page.margins.right)} onChange={(v) => setMargin("right", v)} />
+            </Fld>
+          </div>
+        </>
+      )}
 
       <SectionTitle>Numbering</SectionTitle>
       <Toggle
-        on={numbered}
-        onChange={() => {}}
+        on={showPageNumber}
+        onChange={(v) => setPTC({ showPageNumber: v })}
         label="Show page number"
-        hint={!numbered ? "Suppressed by override" : "Inherited from master"}
-        disabled={!master}
+        hint={master ? undefined : ptConfig.showPageNumber == null ? "Default from page type" : undefined}
       />
-      <div
-        className={`grid grid-cols-2 gap-2 mt-2 ${!numbered ? "opacity-40" : ""}`}
-      >
+      <div className={`grid grid-cols-2 gap-2 mt-2 ${!showPageNumber ? "opacity-40 pointer-events-none" : ""}`}>
         <Fld label="Format">
           <Seg
-            value={
-              pageType === "toc"
-                ? "roman"
-                : pageType === "appendix"
-                  ? "alpha"
-                  : "arabic"
-            }
+            value={numFormat}
             options={[
               { value: "arabic", label: "1, 2" },
               { value: "roman", label: "i, ii" },
               { value: "alpha", label: "A, B" },
             ]}
-            onChange={() => {}}
+            onChange={(v) => setPTC({ numberingFormat: v as "arabic" | "roman" | "alpha" })}
           />
         </Fld>
         <Fld label="Start from">
-          <FldInput type="number" value={1} onChange={() => {}} />
+          <FldInput
+            type="number"
+            value={numStart}
+            onChange={(v) => setPTC({ numberingStart: parseInt(v) || 1 })}
+          />
         </Fld>
       </div>
 
       <SectionTitle>Header</SectionTitle>
       <Toggle
         on={showHeader}
-        onChange={() => {}}
+        onChange={(v) => setPTC({ showHeader: v })}
         label="Show header"
-        disabled={!master}
+        hint={!master && ptConfig.showHeader == null ? "Default from page type" : undefined}
       />
-      <div className={`mt-2 ${!showHeader ? "opacity-40" : ""}`}>
-        <Fld label="Left content">
-          <FldInput
-            mono
-            value={schema.header?.text?.split("·")[0]?.trim() ?? ""}
-            onChange={(v) => {
-              const right = schema.header?.text?.split("·")[1]?.trim() ?? "";
-              setHeaderText(right ? `${v} · ${right}` : v);
-            }}
-            placeholder="{org_name}"
-          />
-        </Fld>
-        <Fld label="Right content">
-          <FldInput
-            mono
-            value={schema.header?.text?.split("·")[1]?.trim() ?? ""}
-            onChange={(v) => {
-              const left = schema.header?.text?.split("·")[0]?.trim() ?? "";
-              setHeaderText(left ? `${left} · ${v}` : v);
-            }}
-            placeholder="{report_title}"
-          />
-        </Fld>
-      </div>
+      {master && (
+        <div className={`mt-2 ${!showHeader ? "opacity-40 pointer-events-none" : ""}`}>
+          <Fld label="Left content">
+            <FldInput
+              mono
+              value={schema.header?.text?.split("·")[0]?.trim() ?? ""}
+              onChange={(v) => {
+                const right = schema.header?.text?.split("·")[1]?.trim() ?? "";
+                setHeaderText(right ? `${v} · ${right}` : v);
+              }}
+              placeholder="{org_name}"
+            />
+          </Fld>
+          <Fld label="Right content">
+            <FldInput
+              mono
+              value={schema.header?.text?.split("·")[1]?.trim() ?? ""}
+              onChange={(v) => {
+                const left = schema.header?.text?.split("·")[0]?.trim() ?? "";
+                setHeaderText(left ? `${left} · ${v}` : v);
+              }}
+              placeholder="{report_title}"
+            />
+          </Fld>
+        </div>
+      )}
 
       <SectionTitle>Footer</SectionTitle>
       <Toggle
         on={showFooter}
-        onChange={() => {}}
+        onChange={(v) => setPTC({ showFooter: v })}
         label="Show footer"
-        disabled={!master}
+        hint={!master && ptConfig.showFooter == null ? "Default from page type" : undefined}
       />
-      <div className={`mt-2 ${!showFooter ? "opacity-40" : ""}`}>
-        <Fld label="Footer text">
-          <FldInput
-            mono
-            value={schema.footer?.text ?? ""}
-            onChange={setFooterText}
-            placeholder="Confidential"
-          />
-        </Fld>
-      </div>
+      {master && (
+        <div className={`mt-2 ${!showFooter ? "opacity-40 pointer-events-none" : ""}`}>
+          <Fld label="Footer text">
+            <FldInput
+              mono
+              value={schema.footer?.text ?? ""}
+              onChange={setFooterText}
+              placeholder="Confidential"
+            />
+          </Fld>
+        </div>
+      )}
 
       <SectionTitle>Background</SectionTitle>
       <Fld label="Border">
         <Seg
-          value={
-            pageType === "cover" || pageType === "certificate" ? "gold" : "none"
-          }
+          value={border}
           options={[
             { value: "none", label: "None" },
             { value: "thin", label: "Thin" },
             { value: "gold", label: "Gold" },
           ]}
-          onChange={() => {}}
+          onChange={(v) => setPTC({ border: v as "none" | "thin" | "gold" })}
         />
       </Fld>
-      <Toggle on={false} onChange={() => {}} label="Watermark" />
+      <Toggle
+        on={watermark}
+        onChange={(v) => setPTC({ watermark: v })}
+        label="Watermark"
+      />
     </>
   );
 }
@@ -1360,64 +1413,455 @@ function VariableInspector({
 
 // ─── ComputedInspector ────────────────────────────────────────────────────────
 
-function ComputedInspector() {
+function ComputedInspector({
+  schema,
+  selectedComputed,
+  onSchemaChange,
+}: {
+  schema: ExtendedSchema;
+  selectedComputed: string | null;
+  onSchemaChange: (s: ExtendedSchema) => void;
+}) {
+  const isBuiltin = BUILT_IN_COMPUTED.some((b) => b.name === selectedComputed);
+  const variable = !isBuiltin
+    ? ((schema.variables ?? []).find((v) => v.name === selectedComputed) as UIVariable | undefined)
+    : undefined;
+
+  const customConstructIds = (schema.constructs ?? [])
+    .filter((c) => c.definition != null)
+    .map((c) => ({ value: c.id, label: c.definition!.label ?? c.id }));
+
+  const allVarNames = (schema.variables ?? [])
+    .filter((v) => v.name !== selectedComputed)
+    .map((v) => v.name);
+
+  function updateVar(updates: Partial<UIVariable>) {
+    const newVars = (schema.variables ?? []).map((v) =>
+      v.name === selectedComputed ? { ...v, ...updates } : v,
+    );
+    onSchemaChange({ ...schema, variables: newVars });
+  }
+
+  if (!selectedComputed) {
+    return (
+      <>
+        <div className="text-[12px] text-slate-400 py-4 text-center mb-4">
+          Select a computed variable to edit it.
+        </div>
+        <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-[12px] text-slate-500">
+          <p className="mb-1.5 font-medium text-slate-700">Built-in computed vars</p>
+          {BUILT_IN_COMPUTED.map((c) => (
+            <div key={c.name} className="flex items-center gap-2 py-1">
+              <span className="w-4 h-4 rounded flex items-center justify-center bg-purple-50 text-purple-700 font-mono text-[9px] font-bold">ƒ</span>
+              <span className="font-mono text-purple-700 text-[11.5px]">{`{${c.name}}`}</span>
+              <span className="text-slate-400 text-[11px]">— {c.desc}</span>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  if (isBuiltin) {
+    const builtin = BUILT_IN_COMPUTED.find((b) => b.name === selectedComputed)!;
+    return (
+      <>
+        <div className="text-[11.5px] text-slate-400 mb-3">
+          Selected: <span className="font-mono text-purple-700">{`{${builtin.name}}`}</span>
+        </div>
+        <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-[12px] text-slate-500">
+          <p className="font-medium text-slate-700 mb-1">{builtin.label}</p>
+          <p>{builtin.desc}</p>
+          <p className="text-[11px] text-slate-400 mt-1">{builtin.format}</p>
+          <p className="text-[11px] text-slate-400 mt-2 italic">Built-in — cannot be edited.</p>
+        </div>
+      </>
+    );
+  }
+
+  if (!variable) return null;
+
+  const fnLabel: Record<string, string> = {
+    counter: "Counter",
+    counter_reset: "Resettable counter",
+    derived: "Derived formula",
+  };
+
   return (
     <>
       <div className="text-[11.5px] text-slate-400 mb-3">
-        Built-in computed variables are managed by the template engine. Custom
-        computed variables can be added above.
+        Selected: <span className="font-mono text-purple-700">{`{${variable.name}}`}</span>
       </div>
-      <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-[12px] text-slate-500">
-        <p className="mb-1 font-medium text-slate-700">
-          Built-in computed vars
-        </p>
-        {BUILT_IN_COMPUTED.map((c) => (
-          <div key={c.name} className="flex items-center gap-2 py-1">
-            <span className="w-4 h-4 rounded flex items-center justify-center bg-purple-50 text-purple-700 font-mono text-[9px] font-bold">
-              ƒ
-            </span>
-            <span className="font-mono text-purple-700 text-[11.5px]">{`{${c.name}}`}</span>
-            <span className="text-slate-400 text-[11px]">— {c.desc}</span>
-          </div>
-        ))}
-      </div>
+      <Fld label="Display label">
+        <FldInput value={variable.label} onChange={(v) => updateVar({ label: v })} />
+      </Fld>
+      <Fld label="Key (identifier)">
+        <FldInput mono value={variable.name} onChange={() => {}} />
+      </Fld>
+      <Fld label="Type">
+        <div className="text-[12px] font-mono text-slate-600 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md">
+          {fnLabel[variable.computedFn ?? ""] ?? variable.computedFn ?? "—"}
+        </div>
+      </Fld>
+
+      {(variable.computedFn === "counter" || variable.computedFn === "counter_reset") && (
+        <>
+          <Fld label="Counts insertions of">
+            <FldSelect
+              value={variable.counterConstruct ?? ""}
+              onChange={(v) => updateVar({ counterConstruct: v })}
+              options={[{ value: "", label: "— select construct —" }, ...customConstructIds]}
+            />
+          </Fld>
+          {variable.computedFn === "counter_reset" && (
+            <Fld label="Resets when">
+              <FldSelect
+                value={variable.counterResetOn ?? ""}
+                onChange={(v) => updateVar({ counterResetOn: v || undefined })}
+                options={[{ value: "", label: "Never (global counter)" }, ...customConstructIds]}
+              />
+            </Fld>
+          )}
+        </>
+      )}
+
+      {variable.computedFn === "derived" && (
+        <Fld label="Formula">
+          <FldInput
+            mono
+            value={variable.formula ?? ""}
+            onChange={(v) => updateVar({ formula: v })}
+            placeholder="{chapter_number}.{fig_number}"
+          />
+          {allVarNames.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {allVarNames.map((n) => (
+                <button
+                  key={n}
+                  onClick={() => updateVar({ formula: (variable.formula ?? "") + `{${n}}` })}
+                  className="px-1.5 py-0.5 rounded text-[10.5px] font-mono bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
+                >
+                  {`{${n}}`}
+                </button>
+              ))}
+            </div>
+          )}
+        </Fld>
+      )}
     </>
   );
 }
 
 // ─── BlockInspector ───────────────────────────────────────────────────────────
 
-function BlockInspector() {
+function BlockInspector({
+  schema,
+  selectedConstruct,
+  onSchemaChange,
+}: {
+  schema: ExtendedSchema;
+  selectedConstruct: string | null;
+  onSchemaChange: (s: ExtendedSchema) => void;
+}) {
+  const ref = (schema.constructs ?? []).find((c) => c.id === selectedConstruct);
+  const def = ref?.definition;
+
+  const computedVarNames = (schema.variables ?? [])
+    .filter((v) => v.type === "COMPUTED")
+    .map((v) => v.name);
+
+  const customConstructIds = (schema.constructs ?? [])
+    .filter((c) => c.definition != null && c.id !== selectedConstruct)
+    .map((c) => ({ value: c.id, label: c.definition!.label ?? c.id }));
+
+  function updateDef(updates: Partial<NonNullable<typeof def>>) {
+    if (!ref) return;
+    onSchemaChange({
+      ...schema,
+      constructs: (schema.constructs ?? []).map((c) =>
+        c.id === selectedConstruct
+          ? { ...c, definition: { ...c.definition!, ...updates } }
+          : c,
+      ),
+    });
+  }
+
+  function updatePart(partId: string, updates: Partial<ConstructPart>) {
+    if (!def) return;
+    updateDef({
+      parts: (def.parts ?? []).map((p) => (p.id === partId ? { ...p, ...updates } : p)),
+    });
+  }
+
+  if (!selectedConstruct || !def) {
+    return (
+      <div className="text-[12px] text-slate-400 py-8 text-center">
+        Select a custom block to edit its settings.
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="text-[11.5px] text-slate-400 mb-3">
-        Custom blocks combine atomic editor blocks into a single construct.
-        Authors insert them with slash commands.
+        Selected: <span className="font-semibold text-slate-700">{def.label}</span>
       </div>
-      <Fld label="Slash command">
-        <FldInput mono value="/captioned-image" onChange={() => {}} />
+      <Fld label="Block name">
+        <FldInput value={def.label} onChange={(v) => updateDef({ label: v })} />
       </Fld>
-      <Fld label="Aliases">
-        <FldInput mono value="/cap, /figure" onChange={() => {}} />
+      <Fld label="Slash command">
+        <FldInput mono value={def.slashCommand ?? ""} onChange={(v) => updateDef({ slashCommand: v })} />
+      </Fld>
+      <Fld label="Aliases (comma-separated)">
+        <FldInput
+          mono
+          value={(def.aliases ?? []).join(", ")}
+          onChange={(v) => updateDef({ aliases: v.split(",").map((s) => s.trim()).filter(Boolean) })}
+        />
       </Fld>
       <Fld label="Category">
         <FldSelect
-          value="media"
-          onChange={() => {}}
-          options={[
-            { value: "media", label: "media" },
-            { value: "layout", label: "layout" },
-            { value: "text", label: "text" },
-          ]}
+          value={def.category ?? "Structure"}
+          onChange={(v) => updateDef({ category: v as ConstructCategory })}
+          options={["Text", "Media", "Layout", "Structure"].map((c) => ({ value: c, label: c }))}
         />
       </Fld>
-      <Toggle
-        on={true}
-        onChange={() => {}}
-        label="Auto-increment figure number"
-      />
-      <Toggle on={true} onChange={() => {}} label="Include in TOC of figures" />
+
+      <SectionTitle>Counter variable</SectionTitle>
+      <Fld label="Drives counter">
+        <FldSelect
+          value={def.counterVariable ?? ""}
+          onChange={(v) => updateDef({ counterVariable: v || undefined })}
+          options={[{ value: "", label: "None" }, ...computedVarNames.map((n) => ({ value: n, label: n }))]}
+        />
+      </Fld>
+
+      <SectionTitle>Composition</SectionTitle>
+      {(def.parts ?? []).length === 0 ? (
+        <div className="text-[11.5px] text-slate-400">No parts defined.</div>
+      ) : (
+        <div className="space-y-2">
+          {(def.parts ?? []).map((p) => (
+            <div key={p.id} className="p-2 bg-slate-50 rounded-md border border-slate-200 text-[11.5px]">
+              <div className="font-mono text-slate-500 mb-1">
+                <span className={`px-1.5 py-0.5 rounded text-[10px] ${PART_TYPE_BADGE[p.type]}`}>{p.type}</span>
+              </div>
+              {p.type === "static_text" && (
+                <input
+                  value={p.content ?? ""}
+                  onChange={(e) => updatePart(p.id, { content: e.target.value })}
+                  className="w-full px-2 py-1 text-[12px] font-mono bg-white border border-slate-300 rounded focus:outline-none focus:border-blue-500"
+                />
+              )}
+              {p.type === "computed_var" && (
+                <select
+                  value={p.variableName ?? ""}
+                  onChange={(e) => updatePart(p.id, { variableName: e.target.value })}
+                  className="w-full px-2 py-1 text-[11.5px] bg-white border border-slate-300 rounded focus:outline-none focus:border-blue-500"
+                >
+                  <option value="">— select variable —</option>
+                  {(schema.variables ?? []).map((v) => <option key={v.name} value={v.name}>{v.name}</option>)}
+                </select>
+              )}
+              {p.type === "user_input" && (
+                <input
+                  value={p.placeholder ?? ""}
+                  onChange={(e) => updatePart(p.id, { placeholder: e.target.value })}
+                  placeholder="Placeholder hint"
+                  className="w-full px-2 py-1 text-[12px] bg-white border border-slate-300 rounded focus:outline-none focus:border-blue-500"
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </>
+  );
+}
+
+// ─── NewComputedModal ─────────────────────────────────────────────────────────
+
+type ComputedKind = "counter" | "counter_reset" | "derived";
+
+function NewComputedModal({
+  schema,
+  onSave,
+  onClose,
+}: {
+  schema: ExtendedSchema;
+  onSave: (v: UIVariable) => void;
+  onClose: () => void;
+}) {
+  const [kind, setKind] = useState<ComputedKind>("counter");
+  const [name, setName] = useState("");
+  const [label, setLabel] = useState("");
+  const [counterConstruct, setCounterConstruct] = useState("");
+  const [counterResetOn, setCounterResetOn] = useState("");
+  const [formula, setFormula] = useState("");
+
+  const customConstructIds = (schema.constructs ?? [])
+    .filter((c) => c.definition != null)
+    .map((c) => ({ value: c.id, label: c.definition!.label ?? c.id }));
+
+  const allVarNames = (schema.variables ?? []).map((v) => v.name);
+
+  function insertRef(varName: string) {
+    setFormula((f) => f + `{${varName}}`);
+  }
+
+  function save() {
+    if (!name.trim()) return;
+    const base: UIVariable = {
+      name: name.trim().replace(/\s+/g, "_").toLowerCase(),
+      label: label || name,
+      type: "COMPUTED",
+    };
+    if (kind === "counter") {
+      onSave({ ...base, computedFn: "counter", counterConstruct });
+    } else if (kind === "counter_reset") {
+      onSave({ ...base, computedFn: "counter_reset", counterConstruct, counterResetOn });
+    } else {
+      onSave({ ...base, computedFn: "derived", formula });
+    }
+  }
+
+  const canSave =
+    name.trim() &&
+    (kind === "counter"
+      ? !!counterConstruct
+      : kind === "counter_reset"
+        ? !!counterConstruct && !!counterResetOn
+        : !!formula.trim());
+
+  return (
+    <div
+      className="fixed inset-0 bg-slate-900/45 flex items-center justify-center z-50 p-8"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+          <div>
+            <h2 className="text-[15px] font-semibold text-slate-900">New computed variable</h2>
+            <p className="text-[12px] text-slate-400 mt-0.5">Derived at render time. Read-only for document authors.</p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100">
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Kind selector */}
+          <Fld label="Type">
+            <div className="flex gap-2">
+              {(["counter", "counter_reset", "derived"] as ComputedKind[]).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => setKind(k)}
+                  className={`flex-1 px-2 py-2 rounded-md border text-[12px] transition-colors ${
+                    kind === k
+                      ? "border-blue-500 bg-blue-50 text-blue-700 font-medium"
+                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {k === "counter" ? "Counter" : k === "counter_reset" ? "Resettable counter" : "Derived formula"}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1.5">
+              {kind === "counter"
+                ? "Counts how many times a specific construct has been inserted in the document."
+                : kind === "counter_reset"
+                  ? "Counts construct insertions but resets to 0 when a parent construct appears (e.g. figure numbers per chapter)."
+                  : "Evaluates a formula by substituting values of other variables at render time."}
+            </p>
+          </Fld>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Fld label="Key (identifier)">
+              <FldInput mono value={name} onChange={setName} placeholder="chapter_number" />
+            </Fld>
+            <Fld label="Display label">
+              <FldInput value={label} onChange={setLabel} placeholder="Chapter number" />
+            </Fld>
+          </div>
+
+          {(kind === "counter" || kind === "counter_reset") && (
+            <Fld label="Count insertions of construct">
+              {customConstructIds.length > 0 ? (
+                <FldSelect
+                  value={counterConstruct}
+                  onChange={setCounterConstruct}
+                  options={[{ value: "", label: "— select construct —" }, ...customConstructIds]}
+                />
+              ) : (
+                <div className="text-[11.5px] text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                  No custom constructs yet. Create one in the Custom Blocks tab first.
+                </div>
+              )}
+            </Fld>
+          )}
+
+          {kind === "counter_reset" && (
+            <Fld label="Reset when this construct appears">
+              {customConstructIds.length > 0 ? (
+                <FldSelect
+                  value={counterResetOn}
+                  onChange={setCounterResetOn}
+                  options={[{ value: "", label: "— select construct —" }, ...customConstructIds]}
+                />
+              ) : (
+                <div className="text-[11.5px] text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                  No custom constructs yet.
+                </div>
+              )}
+            </Fld>
+          )}
+
+          {kind === "derived" && (
+            <Fld label="Formula">
+              <FldInput
+                mono
+                value={formula}
+                onChange={setFormula}
+                placeholder="{chapter_number}.{fig_number}"
+              />
+              {allVarNames.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {allVarNames.map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => insertRef(n)}
+                      className="px-1.5 py-0.5 rounded text-[10.5px] font-mono bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors"
+                    >
+                      {`{${n}}`}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="text-[11px] text-slate-400 mt-1">
+                Use <span className="font-mono">{"{var_name}"}</span> to reference any static or computed variable.
+              </p>
+            </Fld>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100">
+          <span className="text-[11.5px] text-slate-400">Saved to this template's variable list.</span>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="px-3 py-1.5 border border-slate-200 rounded-md text-[12.5px] text-slate-700 hover:bg-slate-50">
+              Cancel
+            </button>
+            <button
+              onClick={save}
+              disabled={!canSave}
+              className="px-3 py-1.5 bg-slate-900 text-white rounded-md text-[12.5px] font-medium hover:bg-slate-700 disabled:opacity-40"
+            >
+              Save variable
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1538,6 +1982,357 @@ function NewVariableModal({
               className="px-3 py-1.5 bg-slate-900 text-white rounded-md text-[12.5px] font-medium hover:bg-slate-700 disabled:opacity-40"
             >
               Save variable
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── NewCustomBlockModal ──────────────────────────────────────────────────────
+
+
+function uid() {
+  return Math.random().toString(36).slice(2, 9);
+}
+
+const PART_TYPE_LABELS: Record<ConstructPartType, string> = {
+  static_text:  "Static text",
+  computed_var: "Computed variable",
+  user_input:   "User input",
+  image:        "Image placeholder",
+};
+
+function PartRow({
+  part,
+  allVarNames,
+  pendingVarName,
+  onChange,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
+}: {
+  part: ConstructPart;
+  allVarNames: string[];
+  pendingVarName?: string;
+  onChange: (p: ConstructPart) => void;
+  onDelete: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  isFirst: boolean;
+  isLast: boolean;
+}) {
+  return (
+    <div className="flex items-start gap-2 p-2 bg-slate-50 rounded-md border border-slate-200">
+      <div className="flex flex-col gap-0.5 pt-1">
+        <button onClick={onMoveUp} disabled={isFirst} className="text-slate-300 hover:text-slate-600 disabled:opacity-20 text-xs leading-none">▲</button>
+        <button onClick={onMoveDown} disabled={isLast} className="text-slate-300 hover:text-slate-600 disabled:opacity-20 text-xs leading-none">▼</button>
+      </div>
+      <div className="flex-1 space-y-1.5">
+        <select
+          value={part.type}
+          onChange={(e) => onChange({ ...part, type: e.target.value as ConstructPartType, content: undefined, variableName: undefined, placeholder: undefined })}
+          className="w-full px-2 py-1 text-[11.5px] bg-white border border-slate-300 rounded text-slate-700 focus:outline-none focus:border-blue-500"
+        >
+          {(Object.keys(PART_TYPE_LABELS) as ConstructPartType[]).map((t) => (
+            <option key={t} value={t}>{PART_TYPE_LABELS[t]}</option>
+          ))}
+        </select>
+
+        {part.type === "static_text" && (
+          <input
+            value={part.content ?? ""}
+            onChange={(e) => onChange({ ...part, content: e.target.value })}
+            placeholder='e.g. "Chapter "'
+            className="w-full px-2 py-1 text-[12px] font-mono bg-white border border-slate-300 rounded focus:outline-none focus:border-blue-500"
+          />
+        )}
+        {part.type === "computed_var" && (
+          <select
+            value={part.variableName ?? ""}
+            onChange={(e) => onChange({ ...part, variableName: e.target.value })}
+            className="w-full px-2 py-1 text-[11.5px] bg-white border border-slate-300 rounded text-slate-700 focus:outline-none focus:border-blue-500"
+          >
+            <option value="">— select variable —</option>
+            {allVarNames.map((n) => (
+              <option key={n} value={n}>
+                {n === pendingVarName ? `${n}  (will be created)` : n}
+              </option>
+            ))}
+          </select>
+        )}
+        {part.type === "user_input" && (
+          <input
+            value={part.placeholder ?? ""}
+            onChange={(e) => onChange({ ...part, placeholder: e.target.value })}
+            placeholder="Placeholder hint, e.g. Caption text"
+            className="w-full px-2 py-1 text-[12px] bg-white border border-slate-300 rounded focus:outline-none focus:border-blue-500"
+          />
+        )}
+
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-1.5 text-[11px] text-slate-500">
+            <input type="checkbox" checked={!!part.style?.bold} onChange={(e) => onChange({ ...part, style: { ...part.style, bold: e.target.checked } })} />
+            Bold
+          </label>
+          <label className="flex items-center gap-1.5 text-[11px] text-slate-500">
+            <input type="checkbox" checked={!!part.style?.italic} onChange={(e) => onChange({ ...part, style: { ...part.style, italic: e.target.checked } })} />
+            Italic
+          </label>
+          <select
+            value={part.style?.alignment ?? "left"}
+            onChange={(e) => onChange({ ...part, style: { ...part.style, alignment: e.target.value as "left" | "center" | "right" | "justify" } })}
+            className="ml-auto px-1.5 py-0.5 text-[11px] bg-white border border-slate-200 rounded text-slate-600"
+          >
+            {["left", "center", "right", "justify"].map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+      </div>
+      <button onClick={onDelete} className="p-1 text-slate-300 hover:text-red-500 transition-colors mt-0.5">
+        <Trash2 size={12} />
+      </button>
+    </div>
+  );
+}
+
+function NewCustomBlockModal({
+  schema,
+  onSave,
+  onClose,
+}: {
+  schema: ExtendedSchema;
+  onSave: (ref: TemplateConstructRef, autoVar?: UIVariable) => void;
+  onClose: () => void;
+}) {
+  const [blockName, setBlockName] = useState("");
+  const [slash, setSlash] = useState("");
+  const [aliases, setAliases] = useState("");
+  const [category, setCategory] = useState<ConstructCategory>("Structure");
+  const [parts, setParts] = useState<ConstructPart[]>([]);
+  const [createCounter, setCreateCounter] = useState(false);
+  const [counterVarName, setCounterVarName] = useState("");
+  const [counterVarLabel, setCounterVarLabel] = useState("");
+  const [counterResetOn, setCounterResetOn] = useState("");
+
+  const existingVarNames = (schema.variables ?? []).map((v) => v.name);
+  const pendingCounterVarName = createCounter ? counterVarName.trim().replace(/\s+/g, "_").toLowerCase() : "";
+  // Include the pending counter var so it can be referenced in parts before save
+  const allVarNames = pendingCounterVarName && !existingVarNames.includes(pendingCounterVarName)
+    ? [...existingVarNames, pendingCounterVarName]
+    : existingVarNames;
+
+  const customConstructIds = (schema.constructs ?? [])
+    .filter((c) => c.definition != null && c.id !== "")
+    .map((c) => ({ value: c.id, label: c.definition!.label ?? c.id }));
+
+  function addPart(type: ConstructPartType) {
+    setParts((ps) => [...ps, { id: uid(), type }]);
+  }
+
+  function updatePart(id: string, p: ConstructPart) {
+    setParts((ps) => ps.map((x) => (x.id === id ? p : x)));
+  }
+
+  function deletePart(id: string) {
+    setParts((ps) => ps.filter((x) => x.id !== id));
+  }
+
+  function movePart(idx: number, dir: -1 | 1) {
+    setParts((ps) => {
+      const next = [...ps];
+      const tmp = next[idx];
+      next[idx] = next[idx + dir];
+      next[idx + dir] = tmp;
+      return next;
+    });
+  }
+
+  function handleNameChange(v: string) {
+    setBlockName(v);
+    if (!slash) setSlash("/" + v.toLowerCase().replace(/\s+/g, "-"));
+    if (!counterVarName) setCounterVarName(v.toLowerCase().replace(/\s+/g, "_") + "_number");
+    if (!counterVarLabel) setCounterVarLabel(v + " number");
+  }
+
+  function save() {
+    if (!blockName.trim()) return;
+    const id = blockName.trim().toLowerCase().replace(/\s+/g, "-");
+    const counterVarId = counterVarName.trim().replace(/\s+/g, "_").toLowerCase();
+
+    const ref: TemplateConstructRef = {
+      id,
+      definition: {
+        id,
+        label: blockName.trim(),
+        category,
+        lexicalNodeTypes: ["custom-" + id],
+        composite: parts.length > 1,
+        pdf: {},
+        parts,
+        counterVariable: createCounter ? counterVarId : undefined,
+        slashCommand: slash.startsWith("/") ? slash : "/" + slash,
+        aliases: aliases ? aliases.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
+      },
+    };
+
+    let autoVar: UIVariable | undefined;
+    if (createCounter && counterVarId) {
+      autoVar = {
+        name: counterVarId,
+        label: counterVarLabel || counterVarId,
+        type: "COMPUTED",
+        computedFn: counterResetOn ? "counter_reset" : "counter",
+        counterConstruct: id,
+        counterResetOn: counterResetOn || undefined,
+      };
+    }
+
+    onSave(ref, autoVar);
+  }
+
+  const canSave = blockName.trim() && parts.length > 0 && (!createCounter || counterVarName.trim());
+
+  return (
+    <div
+      className="fixed inset-0 bg-slate-900/45 flex items-center justify-center z-50 p-6"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 shrink-0">
+          <div>
+            <h2 className="text-[15px] font-semibold text-slate-900">New custom block</h2>
+            <p className="text-[12px] text-slate-400 mt-0.5">Define the composition and behavior of a slash-command construct.</p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100">
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* Identity */}
+          <div className="grid grid-cols-2 gap-3">
+            <Fld label="Block name">
+              <FldInput value={blockName} onChange={handleNameChange} placeholder="Chapter" />
+            </Fld>
+            <Fld label="Category">
+              <FldSelect
+                value={category}
+                onChange={(v) => setCategory(v as ConstructCategory)}
+                options={["Text", "Media", "Layout", "Structure"].map((c) => ({ value: c, label: c }))}
+              />
+            </Fld>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Fld label="Slash command">
+              <FldInput mono value={slash} onChange={setSlash} placeholder="/chapter" />
+            </Fld>
+            <Fld label="Aliases (comma-separated)">
+              <FldInput mono value={aliases} onChange={setAliases} placeholder="/ch, /chap" />
+            </Fld>
+          </div>
+
+          {/* Parts */}
+          <div>
+            {pendingCounterVarName && (
+              <div className="mb-2 flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-purple-50 border border-purple-200 text-[11.5px] text-purple-700">
+                <span className="font-mono font-bold">ƒ</span>
+                <span>
+                  <span className="font-mono">{`{${pendingCounterVarName}}`}</span>
+                  {" "}is available as a variable part below — it will be created when you save.
+                </span>
+              </div>
+            )}
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[11px] font-medium text-slate-400 uppercase tracking-wide">Composition</label>
+              <div className="flex gap-1">
+                {(["static_text", "computed_var", "user_input"] as ConstructPartType[]).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => addPart(t)}
+                    className="flex items-center gap-1 px-2 py-0.5 border border-slate-200 rounded text-[11px] text-slate-600 hover:bg-slate-50"
+                  >
+                    <Plus size={9} /> {t === "static_text" ? "Text" : t === "computed_var" ? "Variable" : "Input"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {parts.length === 0 ? (
+              <div className="text-center text-[12px] text-slate-400 py-6 border border-dashed border-slate-300 rounded-md">
+                Add parts above to define this construct's composition.
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {parts.map((p, i) => (
+                  <PartRow
+                    key={p.id}
+                    part={p}
+                    allVarNames={allVarNames}
+                    pendingVarName={pendingCounterVarName || undefined}
+                    onChange={(np) => updatePart(p.id, np)}
+                    onDelete={() => deletePart(p.id)}
+                    onMoveUp={() => movePart(i, -1)}
+                    onMoveDown={() => movePart(i, 1)}
+                    isFirst={i === 0}
+                    isLast={i === parts.length - 1}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Counter */}
+          <div className="border-t border-slate-100 pt-4">
+            <Toggle
+              on={createCounter}
+              onChange={setCreateCounter}
+              label="This construct drives a counter variable"
+              hint="Each time this block is inserted, an auto-incrementing variable increases."
+            />
+            {createCounter && (
+              <div className="mt-3 space-y-3 pl-1">
+                <div className="grid grid-cols-2 gap-3">
+                  <Fld label="Counter variable key">
+                    <FldInput mono value={counterVarName} onChange={setCounterVarName} placeholder="chapter_number" />
+                  </Fld>
+                  <Fld label="Display label">
+                    <FldInput value={counterVarLabel} onChange={setCounterVarLabel} placeholder="Chapter number" />
+                  </Fld>
+                </div>
+                <Fld label="Reset when construct appears (optional)">
+                  {customConstructIds.length > 0 ? (
+                    <FldSelect
+                      value={counterResetOn}
+                      onChange={setCounterResetOn}
+                      options={[{ value: "", label: "Never reset (global counter)" }, ...customConstructIds]}
+                    />
+                  ) : (
+                    <div className="text-[11.5px] text-slate-400 bg-slate-50 border border-slate-200 rounded-md px-3 py-2">
+                      No other constructs to reset on yet.
+                    </div>
+                  )}
+                </Fld>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 shrink-0">
+          <span className="text-[11.5px] text-slate-400">
+            {createCounter ? "Will also create a counter variable." : "No counter variable."}
+          </span>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="px-3 py-1.5 border border-slate-200 rounded-md text-[12.5px] text-slate-700 hover:bg-slate-50">
+              Cancel
+            </button>
+            <button
+              onClick={save}
+              disabled={!canSave}
+              className="px-3 py-1.5 bg-slate-900 text-white rounded-md text-[12.5px] font-medium hover:bg-slate-700 disabled:opacity-40"
+            >
+              Create block
             </button>
           </div>
         </div>
@@ -1731,6 +2526,8 @@ export default function TemplateBuilderClient({
   );
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [selectedVar, setSelectedVar] = useState<string | null>(null);
+  const [selectedComputed, setSelectedComputed] = useState<string | null>(null);
+  const [selectedConstruct, setSelectedConstruct] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
@@ -1782,8 +2579,38 @@ export default function TemplateBuilderClient({
     if (selectedVar === name) setSelectedVar(null);
   }
 
-  function addComputedVariable() {
-    setModal("newComputed");
+  function addComputedVariable(v: UIVariable) {
+    setSchema((s) => ({ ...s, variables: [...(s.variables ?? []), v] }));
+    setSelectedComputed(v.name);
+    setModal(null);
+  }
+
+  function deleteComputedVariable(name: string) {
+    setSchema((s) => ({ ...s, variables: (s.variables ?? []).filter((v) => v.name !== name) }));
+    if (selectedComputed === name) setSelectedComputed(null);
+  }
+
+  function addCustomBlock(ref: TemplateConstructRef, autoVar?: UIVariable) {
+    setSchema((s) => {
+      const newVars = autoVar
+        ? [...(s.variables ?? []), autoVar]
+        : (s.variables ?? []);
+      return {
+        ...s,
+        constructs: [...(s.constructs ?? []), ref],
+        variables: newVars,
+      };
+    });
+    setSelectedConstruct(ref.id);
+    setModal(null);
+  }
+
+  function deleteCustomBlock(id: string) {
+    setSchema((s) => ({
+      ...s,
+      constructs: (s.constructs ?? []).filter((c) => c.id !== id),
+    }));
+    if (selectedConstruct === id) setSelectedConstruct(null);
   }
 
   const staticVarCount = (schema.variables ?? []).filter(
@@ -2074,13 +2901,19 @@ export default function TemplateBuilderClient({
               {activeTab === "computed" && (
                 <ComputedPane
                   schema={schema}
-                  onAddComputed={addComputedVariable}
+                  onAddComputed={() => setModal("newComputed")}
+                  onDeleteComputed={deleteComputedVariable}
+                  onSelectComputed={setSelectedComputed}
+                  selectedComputed={selectedComputed}
                 />
               )}
               {activeTab === "blocks" && (
                 <CustomBlocksPane
                   schema={schema}
                   onNew={() => setModal("newBlock")}
+                  onDelete={deleteCustomBlock}
+                  onSelect={setSelectedConstruct}
+                  selectedConstruct={selectedConstruct}
                 />
               )}
             </div>
@@ -2129,8 +2962,20 @@ export default function TemplateBuilderClient({
                 onSchemaChange={handleSchemaChange}
               />
             )}
-            {activeTab === "computed" && <ComputedInspector />}
-            {activeTab === "blocks" && <BlockInspector />}
+            {activeTab === "computed" && (
+              <ComputedInspector
+                schema={schema}
+                selectedComputed={selectedComputed}
+                onSchemaChange={handleSchemaChange}
+              />
+            )}
+            {activeTab === "blocks" && (
+              <BlockInspector
+                schema={schema}
+                selectedConstruct={selectedConstruct}
+                onSchemaChange={handleSchemaChange}
+              />
+            )}
           </div>
         </aside>
       </div>
@@ -2139,35 +2984,11 @@ export default function TemplateBuilderClient({
       {modal === "newVar" && (
         <NewVariableModal onSave={addVariable} onClose={() => setModal(null)} />
       )}
+      {modal === "newComputed" && (
+        <NewComputedModal schema={schema} onSave={addComputedVariable} onClose={() => setModal(null)} />
+      )}
       {modal === "newBlock" && (
-        <div
-          className="fixed inset-0 bg-slate-900/45 flex items-center justify-center z-50 p-8"
-          onClick={(e) => e.target === e.currentTarget && setModal(null)}
-        >
-          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[15px] font-semibold text-slate-900">
-                New custom block
-              </h2>
-              <button
-                onClick={() => setModal(null)}
-                className="p-1 text-slate-400 hover:text-slate-600"
-              >
-                <X size={14} />
-              </button>
-            </div>
-            <p className="text-[12.5px] text-slate-400 mb-4">
-              Custom block composition is coming soon. This feature will let you
-              combine atomic blocks into reusable constructs.
-            </p>
-            <button
-              onClick={() => setModal(null)}
-              className="w-full px-3 py-2 bg-slate-900 text-white rounded-md text-[13px] font-medium hover:bg-slate-700"
-            >
-              Got it
-            </button>
-          </div>
-        </div>
+        <NewCustomBlockModal schema={schema} onSave={addCustomBlock} onClose={() => setModal(null)} />
       )}
     </div>
   );

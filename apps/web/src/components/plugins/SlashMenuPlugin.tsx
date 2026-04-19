@@ -34,6 +34,8 @@ import * as React from "react";
 import { useTemplate } from "@block-editor/template-engine";
 import type { ResolvedConstruct } from "@block-editor/template-engine";
 
+import { $createConstructBadgeNode } from "../nodes/ConstructBadgeNode";
+
 // ─── Insert handlers ──────────────────────────────────────────────────────────
 // Maps built-in construct IDs to their Lexical editor insert actions.
 // Add an entry here when a new construct type (ImageNode, etc.) is supported.
@@ -128,15 +130,24 @@ export default function SlashMenuPlugin() {
   const { constructs } = useTemplate();
 
   const options = React.useMemo(() => {
-    return constructs
-      .filter((c) => c.id in INSERT_HANDLERS) // skip constructs with no registered handler yet
-      .map(
-        (c) =>
-          new SlashMenuItem(c.label, {
-            icon: iconForConstruct(c),
-            onSelect: () => INSERT_HANDLERS[c.id](editor),
-          }),
-      );
+    return constructs.map((c) => {
+      const handler = INSERT_HANDLERS[c.id];
+      return new SlashMenuItem(c.label, {
+        icon: iconForConstruct(c),
+        onSelect: () => {
+          if (handler) {
+            handler(editor);
+          } else {
+            editor.update(() => {
+              const sel = $getSelection();
+              if ($isRangeSelection(sel)) {
+                sel.insertNodes([$createConstructBadgeNode(c.id, c.label, c.parts ?? [])]);
+              }
+            });
+          }
+        },
+      });
+    });
   }, [constructs, editor]);
 
   const checkForTriggerMatch = useBasicTypeaheadTriggerMatch("/", {
