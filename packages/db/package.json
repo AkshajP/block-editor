@@ -16,12 +16,12 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
-    "@prisma/client": "^6.0.0"
+    "@prisma/client": "^7.8.0"
   },
   "devDependencies": {
     "@types/node": "^25",
-    "prisma": "^6.0.0",
+    "prisma": "^7.8.0",
     "tsx": "^4.7.1",
-    "typescript": "^5"
+    "typescript": "^6"
   }
 }
